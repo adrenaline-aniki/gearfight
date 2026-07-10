@@ -1,4 +1,5 @@
 import type { GearLevel } from '../config/constants';
+import type { PartLoadout } from '../config/parts';
 
 export type BattleMode = 'tutorial' | 'story' | 'free' | 'classroom';
 export type FighterId = 'hajime' | 'kakashi' | 'wizel' | 'ganrock' | 'aegis' | 'drift' | 'theorion' | 'omeganova' | 'sophislegion';
@@ -24,6 +25,8 @@ export interface FighterConfig {
   facing: 1 | -1;
   x: number;
   gear?: GearLevel;
+  /** Protagonist-only part customization (spec §3.5); see config/parts.ts. */
+  loadout?: PartLoadout;
 }
 
 export interface PlayerInput {

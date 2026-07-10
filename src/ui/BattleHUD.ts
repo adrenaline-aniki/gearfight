@@ -1,7 +1,12 @@
 import Phaser from 'phaser';
 import { GEAR_TABLE, GAME_WIDTH, PIXEL_FONT } from '../config/constants';
+import type { MechType } from '../config/parts';
 import type { Fighter } from '../entities/Fighter';
 import type { TheoryBonusEvent } from '../types/game';
+
+const TYPE_LABEL: Record<MechType, string> = {
+  speed: '[速度型]', power: '[パワー型]', defense: '[防御型]', balanced: '[バランス型]',
+};
 
 export class BattleHUD {
   private container: Phaser.GameObjects.Container;
@@ -54,7 +59,7 @@ export class BattleHUD {
 
     const gear = GEAR_TABLE[p1.gear];
     this.gearText.setText(`GL${p1.gear}  ${gear.teeth}`);
-    this.ratioText.setText(`比 = ${gear.ratio}  SPD×${gear.speedMul} DMG×${gear.damageMul}`);
+    this.ratioText.setText(`比 = ${gear.ratio}  SPD×${gear.speedMul} DMG×${gear.damageMul}  ${TYPE_LABEL[p1.getMechType()]}`);
 
     this.heatBar.clear();
     const heatColor = p1.heat > 85 ? 0xff0000 : p1.heat > 60 ? 0xffaa00 : 0x44aa44;

@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH, GROUND_Y, PIXEL_FONT } from '../config/constants';
+import { DEFAULT_LOADOUT, typeMatchupMultiplier } from '../config/parts';
 import { AIController } from '../ai/AIController';
 import { Fighter } from '../entities/Fighter';
 import { AudioManager } from '../systems/AudioManager';
@@ -57,6 +58,7 @@ export class BattleScene extends Phaser.Scene {
       maxHp: 1000,
       facing: 1,
       x: 100,
+      loadout: this.config.player1 === 'hajime' ? DEFAULT_LOADOUT : undefined,
     });
     this.p1.isPlayer = true;
 
@@ -184,7 +186,8 @@ export class BattleScene extends Phaser.Scene {
 
     const isGuarded = defender.state === 'block';
     const isShiftHit = defender.isShifting();
-    const dmg = defender.takeDamage(attacker.getAttackDamage(), isGuarded, isShiftHit);
+    const matchup = typeMatchupMultiplier(attacker.getMechType(), defender.getMechType());
+    const dmg = defender.takeDamage(Math.round(attacker.getAttackDamage() * matchup), isGuarded, isShiftHit);
 
     if (dmg > 0) {
       attacker.onHitLanded();
@@ -200,6 +203,7 @@ export class BattleScene extends Phaser.Scene {
       if (isShiftHit) this.addTheoryBonus('shift_gap', 'シフト中は無防備！');
       if (attacker.canGuardBreak() && isGuarded) this.addTheoryBonus('guard_break', 'GL4以上でガードブレイク！');
       if (defender.overheatTimer > 0) this.addTheoryBonus('overheat', 'オーバーヒート中の追撃！');
+      if (matchup > 1) this.addTheoryBonus('type_advantage', 'タイプ相性で追加ダメージ！');
 
       if (this.config.mode === 'tutorial' && attacker === this.p1) {
         this.tutorialHits += 1;

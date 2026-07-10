@@ -18,6 +18,7 @@ import {
   WALK_FRAME_INTERVAL,
   type GearLevel,
 } from '../config/constants';
+import { ARM_PARTS, FIGHTER_INNATE_TYPE, HEAD_PARTS, LEG_PARTS, resolveMechType, type MechType, type PartLoadout } from '../config/parts';
 import type { PlayerInput } from '../types/game';
 
 const BASE_SPEED = 1.8;
@@ -69,6 +70,7 @@ export class Fighter {
 
   isPlayer = false;
   isAI = false;
+  private loadout?: PartLoadout;
 
   constructor(scene: Phaser.Scene, config: FighterConfig) {
     this.id = config.id;
@@ -80,8 +82,10 @@ export class Fighter {
     this.x = config.x;
     this.y = GROUND_Y;
     this.facing = config.facing;
-    this.maxHp = config.maxHp;
-    this.hp = config.maxHp;
+    this.loadout = config.loadout;
+    const hpBonus = this.loadout ? HEAD_PARTS[this.loadout.head].hpBonus : 0;
+    this.maxHp = config.maxHp + hpBonus;
+    this.hp = this.maxHp;
     if (config.gear) this.gear = config.gear;
 
     this.spriteScale = SPRITE_TARGET_HEIGHT[this.id] / SPRITE_IDLE_SOURCE_HEIGHT[this.id];
@@ -234,9 +238,11 @@ export class Fighter {
 
   private handleMovement(input: PlayerInput, overheat: boolean) {
     const gear = GEAR_TABLE[this.gear];
+    const legSpeedMul = this.loadout ? LEG_PARTS[this.loadout.legs].speedMul : 1;
+    const speed = BASE_SPEED * gear.speedMul * legSpeedMul;
     let dx = 0;
-    if (input.left) dx -= BASE_SPEED * gear.speedMul;
-    if (input.right) dx += BASE_SPEED * gear.speedMul;
+    if (input.left) dx -= speed;
+    if (input.right) dx += speed;
 
     if (dx !== 0) {
       this.x += dx;
@@ -387,7 +393,23 @@ export class Fighter {
       dmg *= 1.2;
       this.perfectShiftBonus = false;
     }
+    // Weak attacks lead with the right arm, strong attacks with the left -
+    // matches spec §3.5 (arms independently determine attack type/GL affinity).
+    if (this.loadout) {
+      const armId = this.state === 'attack_strong' ? this.loadout.armLeft : this.loadout.armRight;
+      const arm = ARM_PARTS[armId];
+      if ((arm.favoredGear as readonly GearLevel[]).includes(this.gear)) dmg *= arm.damageMul;
+    }
     return Math.round(dmg);
+  }
+
+  // Speed/Power/Defense archetype for the type-matchup triangle (spec §3.5).
+  // The protagonist's type comes from whichever arms are equipped; everyone
+  // else's is fixed to their established character concept.
+  getMechType(): MechType {
+    return this.loadout
+      ? resolveMechType(this.loadout.armRight, this.loadout.armLeft)
+      : FIGHTER_INNATE_TYPE[this.id];
   }
 
   canGuardBreak(): boolean {
