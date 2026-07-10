@@ -29,15 +29,16 @@ export class ModeSelectScene extends Phaser.Scene {
       { label: 'ストーリー（第2章 vs ゴウケン）', config: { mode: 'story', player1: 'hajime', player2: 'ganrock', roundTime: 45, roundsToWin: 2, assistMode: save.assistMode } },
       { label: 'ストーリー（第3章 vs リン）', config: { mode: 'story', player1: 'hajime', player2: 'drift', roundTime: 45, roundsToWin: 2, assistMode: save.assistMode } },
       { label: 'ストーリー（第4章 vs カメイ）', config: { mode: 'story', player1: 'hajime', player2: 'aegis', roundTime: 45, roundsToWin: 2, assistMode: save.assistMode } },
+      { label: 'ストーリー（第5章 vs カイ）', config: { mode: 'story', player1: 'hajime', player2: 'theorion', roundTime: 45, roundsToWin: 2, assistMode: save.assistMode } },
       { label: '教室モード（2P対戦）', config: { mode: 'classroom', player1: 'hajime', player2: 'hajime', roundTime: 60, roundsToWin: 1, assistMode: save.assistMode } },
       { label: 'フリー対戦（vs CPU）', config: { mode: 'free', player1: 'hajime', player2: 'wizel', roundTime: 60, roundsToWin: 1, assistMode: save.assistMode } },
     ];
 
     modes.forEach((m, i) => {
-      const y = 38 + i * 19;
+      const y = 36 + i * 17;
       const btn = this.add.text(GAME_WIDTH / 2, y, m.label, {
         fontSize: '8px', color: '#fff', fontFamily: 'sans-serif',
-        backgroundColor: '#2c3e6e', padding: { x: 10, y: 3 },
+        backgroundColor: '#2c3e6e', padding: { x: 10, y: 2 },
       }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
       btn.on('pointerdown', () => {
@@ -46,7 +47,7 @@ export class ModeSelectScene extends Phaser.Scene {
       });
     });
 
-    this.assistText = this.add.text(GAME_WIDTH / 2, 175, `アシストモード: ${save.assistMode ? 'ON' : 'OFF'}`, {
+    this.assistText = this.add.text(GAME_WIDTH / 2, 178, `アシストモード: ${save.assistMode ? 'ON' : 'OFF'}`, {
       fontSize: '9px', color: '#88ff88', fontFamily: 'sans-serif',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 

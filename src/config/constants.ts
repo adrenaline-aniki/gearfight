@@ -35,7 +35,7 @@ export const SPRITE_POSES = [
 export type SpritePose = (typeof SPRITE_POSES)[number];
 
 // PNG-backed fighters, loaded from public/sprites/<id>/<pose>.png by BootScene.
-export const SPRITE_FIGHTERS = ['hajime', 'wizel', 'ganrock', 'aegis', 'drift'] as const;
+export const SPRITE_FIGHTERS = ['hajime', 'wizel', 'ganrock', 'aegis', 'drift', 'theorion'] as const;
 
 // Procedurally-composed fighters (Approach A / spec §6.1 SpriteFactory), textures
 // generated at runtime by graphics/SpriteFactory.ts instead of loaded from disk.
@@ -52,4 +52,5 @@ export const SPRITE_IDLE_SOURCE_HEIGHT: Record<(typeof ALL_SPRITE_FIGHTERS)[numb
   ganrock: 167,
   aegis: 178,
   drift: 190,
+  theorion: 343,
 };
