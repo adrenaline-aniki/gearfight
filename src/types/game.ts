@@ -56,9 +56,15 @@ export interface TheoryBonusEvent {
   frames: number;
 }
 
+export type PortraitEmotion =
+  | 'normal' | 'smile' | 'surprised' | 'angry' | 'serious'
+  | 'frustrated' | 'confident' | 'shy' | 'eyes_closed';
+
 export interface DialogueLine {
   speaker: string;
   text: string;
+  /** Facial expression for this line's portrait (see PORTRAIT_EMOTIONS). Defaults to 'normal'. */
+  emotion?: PortraitEmotion;
   /** Optional visual beat tied to this line, handled by DialogueScene. */
   effect?: 'reveal-hajime' | 'awaken-hajime';
 }

@@ -60,9 +60,17 @@ export const SPRITE_TARGET_HEIGHT: Record<(typeof ALL_SPRITE_FIGHTERS)[number], 
   omeganova: 82,
   sophislegion: 82,
 };
-// Face portraits for dialogue scenes (public/sprites/portraits/<id>.png), cropped
-// from the user-provided character settei sheet (public/sprites/character_settei_v1.png).
-export const PORTRAIT_IDS = ['takumi', 'nogi', 'hajime', 'wizel', 'ganrock', 'drift', 'aegis', 'theorion', 'omeganova'] as const;
+// Face portraits for dialogue scenes, cropped from the user-provided expression
+// sheet (public/sprites/portraits/<id>/<emotion>.png) — one folder per character,
+// nine emotions each (see PORTRAIT_EMOTIONS).
+export const PORTRAIT_EMOTION_IDS = ['takumi', 'nogi', 'hajime', 'wizel', 'ganrock', 'drift', 'aegis', 'theorion'] as const;
+export const PORTRAIT_EMOTIONS = [
+  'normal', 'smile', 'surprised', 'angry', 'serious', 'frustrated', 'confident', 'shy', 'eyes_closed',
+] as const;
+
+// Characters with only a single flat portrait (public/sprites/portraits/<id>.png),
+// cropped from the character settei sheet instead — no emotion variants available.
+export const PORTRAIT_FLAT_IDS = ['omeganova'] as const;
 
 export const SPRITE_IDLE_SOURCE_HEIGHT: Record<(typeof ALL_SPRITE_FIGHTERS)[number], number> = {
   hajime: 180,

@@ -22,24 +22,25 @@ const SPEAKER_COLORS: Record<string, string> = {
   'レイ': '#8866ff',
 };
 
-// Speaker name -> preloaded portrait texture key (see BootScene). Speakers
-// without an entry (narration) just show no face icon.
-const SPEAKER_PORTRAITS: Record<string, string> = {
-  '父さん': 'portrait_takumi',
-  'ノギ先生': 'portrait_nogi',
-  '主人公': 'portrait_hajime',
-  'ソニカ': 'portrait_wizel',
-  'ゴウケン': 'portrait_ganrock',
-  'リン': 'portrait_drift',
-  'カメイ': 'portrait_aegis',
-  'カイ': 'portrait_theorion',
-  '謎の青年': 'portrait_omeganova',
-  'レイ': 'portrait_omeganova',
+// Speaker name -> portrait character id (see PORTRAIT_EMOTION_IDS/PORTRAIT_FLAT_IDS
+// in constants.ts). Speakers without an entry (narration) just show no face icon.
+const SPEAKER_CHARACTER: Record<string, string> = {
+  '父さん': 'takumi',
+  'ノギ先生': 'nogi',
+  '主人公': 'hajime',
+  'ソニカ': 'wizel',
+  'ゴウケン': 'ganrock',
+  'リン': 'drift',
+  'カメイ': 'aegis',
+  'カイ': 'theorion',
+  '謎の青年': 'omeganova',
+  'レイ': 'omeganova',
 };
 
-const PORTRAIT_X = 24;
-const PORTRAIT_WIDTH = 28;
-const TEXT_X = 46;
+const PORTRAIT_X = 29;
+const PORTRAIT_WIDTH = 42;
+const PORTRAIT_HEIGHT = 32;
+const TEXT_X = 56;
 
 // Generic tap-to-advance dialogue player, reused for the story prologue and
 // future chapter-intro demos (spec §5.2 "章開始デモ"). Content lives in
@@ -94,8 +95,8 @@ export class DialogueScene extends Phaser.Scene {
     this.add.rectangle(GAME_WIDTH / 2, boxY, GAME_WIDTH - 12, 44, 0x0d0d1a, 0.92)
       .setStrokeStyle(1, 0x4a4a6e);
 
-    this.speakerPortrait = this.add.image(PORTRAIT_X, boxY, 'portrait_takumi')
-      .setDisplaySize(PORTRAIT_WIDTH, 40)
+    this.speakerPortrait = this.add.image(PORTRAIT_X, boxY, 'portrait_takumi_normal')
+      .setDisplaySize(PORTRAIT_WIDTH, PORTRAIT_HEIGHT)
       .setVisible(false);
 
     this.nameText = this.add.text(TEXT_X, boxY - 20, '', {
@@ -134,9 +135,9 @@ export class DialogueScene extends Phaser.Scene {
     this.nameText.setColor(SPEAKER_COLORS[line.speaker] ?? '#ffdd44');
     this.bodyText.setText(line.text);
 
-    const portraitKey = SPEAKER_PORTRAITS[line.speaker];
-    if (portraitKey) {
-      this.speakerPortrait.setTexture(portraitKey).setVisible(true);
+    const charId = SPEAKER_CHARACTER[line.speaker];
+    if (charId) {
+      this.speakerPortrait.setTexture(this.resolvePortraitKey(charId, line.emotion)).setVisible(true);
       this.nameText.setX(TEXT_X);
       this.bodyText.setX(TEXT_X);
       this.bodyText.setWordWrapWidth(GAME_WIDTH - 14 - TEXT_X, true);
@@ -156,6 +157,11 @@ export class DialogueScene extends Phaser.Scene {
         onComplete: () => this.hajimePortrait.setTint(0xaaaa99),
       });
     }
+  }
+
+  private resolvePortraitKey(charId: string, emotion?: string): string {
+    const withEmotion = `portrait_${charId}_${emotion ?? 'normal'}`;
+    return this.textures.exists(withEmotion) ? withEmotion : `portrait_${charId}`;
   }
 
   private advance() {
