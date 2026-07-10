@@ -1,15 +1,19 @@
+import { DEFAULT_LOADOUT, type PartLoadout } from '../config/parts';
+
 const KEY = 'gearfight_save';
 
 interface SaveData {
   assistMode: boolean;
   tutorialComplete: boolean;
   classroomRanking: { name: string; wins: number }[];
+  loadout: PartLoadout;
 }
 
 const defaults: SaveData = {
   assistMode: true,
   tutorialComplete: false,
   classroomRanking: [],
+  loadout: DEFAULT_LOADOUT,
 };
 
 export const SaveManager = {

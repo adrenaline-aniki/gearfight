@@ -33,6 +33,7 @@ export class ModeSelectScene extends Phaser.Scene {
         label: 'オープニング（物語の冒頭）', color: '#ffdd44',
         action: () => this.scene.start('DialogueScene', { lines: OPENING_DIALOGUE, nextScene: 'ModeSelectScene' }),
       },
+      { label: 'ガレージ（パーツ換装）', color: '#88ddff', action: () => this.scene.start('GarageScene') },
       { label: 'チュートリアル（第0章）', action: toBattle({ mode: 'tutorial', player1: 'hajime', player2: 'kakashi', roundTime: 90, roundsToWin: 1, tutorialStep: 1, assistMode: save.assistMode }) },
       { label: 'ストーリー（第1章 vs ソニカ）', action: toBattle({ mode: 'story', player1: 'hajime', player2: 'wizel', roundTime: 45, roundsToWin: 2, assistMode: save.assistMode }) },
       { label: 'ストーリー（第2章 vs ゴウケン）', action: toBattle({ mode: 'story', player1: 'hajime', player2: 'ganrock', roundTime: 45, roundsToWin: 2, assistMode: save.assistMode }) },
@@ -52,7 +53,7 @@ export class ModeSelectScene extends Phaser.Scene {
     ];
 
     modes.forEach((m, i) => {
-      const y = 35 + i * 13;
+      const y = 33 + i * 12;
       const btn = this.add.text(GAME_WIDTH / 2, y, m.label, {
         fontSize: '10px', color: m.color ?? '#fff', fontFamily: PIXEL_FONT,
         backgroundColor: '#2c3e6e', padding: { x: 10, y: 1 },
@@ -64,7 +65,7 @@ export class ModeSelectScene extends Phaser.Scene {
       });
     });
 
-    this.assistText = this.add.text(GAME_WIDTH / 2, 187, `アシストモード: ${save.assistMode ? 'ON' : 'OFF'}`, {
+    this.assistText = this.add.text(GAME_WIDTH / 2, 180, `アシストモード: ${save.assistMode ? 'ON' : 'OFF'}`, {
       fontSize: '10px', color: '#88ff88', fontFamily: PIXEL_FONT,
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 

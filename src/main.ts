@@ -6,6 +6,7 @@ import { BootScene } from './scenes/BootScene';
 import { TitleScene } from './scenes/TitleScene';
 import { ModeSelectScene } from './scenes/ModeSelectScene';
 import { DialogueScene } from './scenes/DialogueScene';
+import { GarageScene } from './scenes/GarageScene';
 import { BattleScene } from './scenes/BattleScene';
 
 const config: Phaser.Types.Core.GameConfig = {
@@ -21,7 +22,7 @@ const config: Phaser.Types.Core.GameConfig = {
     width: GAME_WIDTH,
     height: GAME_HEIGHT,
   },
-  scene: [BootScene, TitleScene, ModeSelectScene, DialogueScene, BattleScene],
+  scene: [BootScene, TitleScene, ModeSelectScene, DialogueScene, GarageScene, BattleScene],
   physics: {
     default: 'arcade',
     arcade: { gravity: { x: 0, y: 0 }, debug: false },

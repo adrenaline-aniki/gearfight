@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH, GROUND_Y, PIXEL_FONT } from '../config/constants';
-import { DEFAULT_LOADOUT, typeMatchupMultiplier } from '../config/parts';
+import { typeMatchupMultiplier } from '../config/parts';
 import { AIController } from '../ai/AIController';
 import { Fighter } from '../entities/Fighter';
 import { AudioManager } from '../systems/AudioManager';
@@ -58,7 +58,7 @@ export class BattleScene extends Phaser.Scene {
       maxHp: 1000,
       facing: 1,
       x: 100,
-      loadout: this.config.player1 === 'hajime' ? DEFAULT_LOADOUT : undefined,
+      loadout: this.config.player1 === 'hajime' ? SaveManager.load().loadout : undefined,
     });
     this.p1.isPlayer = true;
 
