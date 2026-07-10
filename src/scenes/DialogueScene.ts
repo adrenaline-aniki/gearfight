@@ -12,7 +12,19 @@ interface DialogueSceneData {
 const SPEAKER_COLORS: Record<string, string> = {
   '父さん': '#ffdd44',
   '主人公': '#66ccff',
+  'ノギ先生': '#ff99cc',
 };
+
+// Speaker name -> preloaded portrait texture key (see BootScene). Speakers
+// without an entry (narration, 主人公) just show no face icon.
+const SPEAKER_PORTRAITS: Record<string, string> = {
+  '父さん': 'portrait_takumi',
+  'ノギ先生': 'portrait_nogi',
+};
+
+const PORTRAIT_X = 24;
+const PORTRAIT_WIDTH = 28;
+const TEXT_X = 46;
 
 // Generic tap-to-advance dialogue player, reused for the story prologue and
 // future chapter-intro demos (spec §5.2 "章開始デモ"). Content lives in
@@ -28,6 +40,7 @@ export class DialogueScene extends Phaser.Scene {
   private bodyText!: Phaser.GameObjects.Text;
   private promptText!: Phaser.GameObjects.Text;
   private hajimePortrait!: Phaser.GameObjects.Image;
+  private speakerPortrait!: Phaser.GameObjects.Image;
   private finished = false;
 
   constructor() {
@@ -66,13 +79,17 @@ export class DialogueScene extends Phaser.Scene {
     this.add.rectangle(GAME_WIDTH / 2, boxY, GAME_WIDTH - 12, 44, 0x0d0d1a, 0.92)
       .setStrokeStyle(1, 0x4a4a6e);
 
-    this.nameText = this.add.text(14, boxY - 20, '', {
+    this.speakerPortrait = this.add.image(PORTRAIT_X, boxY, 'portrait_takumi')
+      .setDisplaySize(PORTRAIT_WIDTH, 40)
+      .setVisible(false);
+
+    this.nameText = this.add.text(TEXT_X, boxY - 20, '', {
       fontSize: '10px', color: '#ffdd44', fontFamily: PIXEL_FONT, fontStyle: 'bold',
     });
 
-    this.bodyText = this.add.text(14, boxY - 7, '', {
+    this.bodyText = this.add.text(TEXT_X, boxY - 7, '', {
       fontSize: '10px', color: '#ffffff', fontFamily: PIXEL_FONT,
-      wordWrap: { width: GAME_WIDTH - 28, useAdvancedWrap: true },
+      wordWrap: { width: GAME_WIDTH - 14 - TEXT_X, useAdvancedWrap: true },
       lineSpacing: 4,
     });
 
@@ -101,6 +118,19 @@ export class DialogueScene extends Phaser.Scene {
     this.nameText.setText(line.speaker);
     this.nameText.setColor(SPEAKER_COLORS[line.speaker] ?? '#ffdd44');
     this.bodyText.setText(line.text);
+
+    const portraitKey = SPEAKER_PORTRAITS[line.speaker];
+    if (portraitKey) {
+      this.speakerPortrait.setTexture(portraitKey).setVisible(true);
+      this.nameText.setX(TEXT_X);
+      this.bodyText.setX(TEXT_X);
+      this.bodyText.setWordWrapWidth(GAME_WIDTH - 14 - TEXT_X, true);
+    } else {
+      this.speakerPortrait.setVisible(false);
+      this.nameText.setX(14);
+      this.bodyText.setX(14);
+      this.bodyText.setWordWrapWidth(GAME_WIDTH - 28, true);
+    }
 
     if (line.effect === 'reveal-hajime') {
       this.tweens.add({ targets: this.hajimePortrait, alpha: 1, duration: 700 });
