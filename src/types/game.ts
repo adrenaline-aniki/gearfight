@@ -46,6 +46,8 @@ export interface BattleConfig {
   roundsToWin: number;
   tutorialStep?: number;
   assistMode?: boolean;
+  /** Played via DialogueScene after a clean player win, before returning to ModeSelectScene. */
+  postWinDialogue?: DialogueLine[];
 }
 
 export interface TheoryBonusEvent {

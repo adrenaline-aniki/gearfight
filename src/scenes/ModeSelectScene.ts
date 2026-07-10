@@ -3,6 +3,7 @@ import { GAME_HEIGHT, GAME_WIDTH, PIXEL_FONT } from '../config/constants';
 import { AudioManager } from '../systems/AudioManager';
 import { SaveManager } from '../systems/SaveManager';
 import { OPENING_DIALOGUE } from '../data/openingDialogue';
+import { FINAL_CHAPTER_INTRO, FINAL_CHAPTER_VICTORY } from '../data/finalChapterDialogue';
 import type { BattleConfig } from '../types/game';
 
 export class ModeSelectScene extends Phaser.Scene {
@@ -25,6 +26,8 @@ export class ModeSelectScene extends Phaser.Scene {
 
     const save = SaveManager.load();
     const toBattle = (config: BattleConfig) => () => this.scene.start('BattleScene', config);
+    const toBattleWithIntro = (introLines: typeof OPENING_DIALOGUE, config: BattleConfig) => () =>
+      this.scene.start('DialogueScene', { lines: introLines, nextScene: 'BattleScene', nextData: config });
     const modes: { label: string; color?: string; action: () => void }[] = [
       {
         label: 'オープニング（物語の冒頭）', color: '#ffdd44',
@@ -36,7 +39,13 @@ export class ModeSelectScene extends Phaser.Scene {
       { label: 'ストーリー（第3章 vs リン）', action: toBattle({ mode: 'story', player1: 'hajime', player2: 'drift', roundTime: 45, roundsToWin: 2, assistMode: save.assistMode }) },
       { label: 'ストーリー（第4章 vs カメイ）', action: toBattle({ mode: 'story', player1: 'hajime', player2: 'aegis', roundTime: 45, roundsToWin: 2, assistMode: save.assistMode }) },
       { label: 'ストーリー（第5章 vs カイ）', action: toBattle({ mode: 'story', player1: 'hajime', player2: 'theorion', roundTime: 45, roundsToWin: 2, assistMode: save.assistMode }) },
-      { label: '最終章（vs オメガノヴァ）', action: toBattle({ mode: 'story', player1: 'hajime', player2: 'omeganova', roundTime: 60, roundsToWin: 2, assistMode: save.assistMode }) },
+      {
+        label: '最終章（vs オメガノヴァ）',
+        action: toBattleWithIntro(FINAL_CHAPTER_INTRO, {
+          mode: 'story', player1: 'hajime', player2: 'omeganova', roundTime: 60, roundsToWin: 2,
+          assistMode: save.assistMode, postWinDialogue: FINAL_CHAPTER_VICTORY,
+        }),
+      },
       { label: '隠しボス（vs ソフィス・レギオン）', action: toBattle({ mode: 'story', player1: 'hajime', player2: 'sophislegion', roundTime: 60, roundsToWin: 2, assistMode: save.assistMode }) },
       { label: '教室モード（2P対戦）', action: toBattle({ mode: 'classroom', player1: 'hajime', player2: 'hajime', roundTime: 60, roundsToWin: 1, assistMode: save.assistMode }) },
       { label: 'フリー対戦（vs CPU）', action: toBattle({ mode: 'free', player1: 'hajime', player2: 'wizel', roundTime: 60, roundsToWin: 1, assistMode: save.assistMode }) },

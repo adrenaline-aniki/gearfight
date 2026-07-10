@@ -270,7 +270,7 @@ export class BattleScene extends Phaser.Scene {
 
     this.gameFeel.applySlowMo(30);
     this.audio.playSe('ko');
-    this.showResult(result);
+    this.showResult(result, winner === 'p1');
   }
 
   private promptClassroomName() {
@@ -290,7 +290,7 @@ export class BattleScene extends Phaser.Scene {
     });
   }
 
-  private showResult(text: string) {
+  private showResult(text: string, playerWon = false) {
     this.audio.stopBgm();
     this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.6).setDepth(180);
     this.add.text(GAME_WIDTH / 2, 70, text, {
@@ -308,12 +308,19 @@ export class BattleScene extends Phaser.Scene {
       fontSize: '10px', color: '#ffdd44', fontFamily: PIXEL_FONT, backgroundColor: '#333', padding: { x: 10, y: 4 },
     }).setOrigin(0.5).setDepth(181).setInteractive();
 
-    const menu = this.add.text(GAME_WIDTH / 2, 175, 'モード選択へ', {
+    const postWinDialogue = playerWon ? this.config.postWinDialogue : undefined;
+    const menu = this.add.text(GAME_WIDTH / 2, 175, postWinDialogue ? 'つづける ▶' : 'モード選択へ', {
       fontSize: '10px', color: '#aaa', fontFamily: PIXEL_FONT,
     }).setOrigin(0.5).setDepth(181).setInteractive();
 
     retry.on('pointerdown', () => this.scene.restart(this.config));
-    menu.on('pointerdown', () => this.scene.start('ModeSelectScene'));
+    menu.on('pointerdown', () => {
+      if (postWinDialogue) {
+        this.scene.start('DialogueScene', { lines: postWinDialogue, nextScene: 'ModeSelectScene' });
+      } else {
+        this.scene.start('ModeSelectScene');
+      }
+    });
   }
 
   private syncVisuals() {

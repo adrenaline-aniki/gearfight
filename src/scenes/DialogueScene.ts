@@ -18,6 +18,8 @@ const SPEAKER_COLORS: Record<string, string> = {
   'リン': '#88cc55',
   'カメイ': '#8899dd',
   'カイ': '#cccccc',
+  '謎の青年': '#999999',
+  'レイ': '#8866ff',
 };
 
 // Speaker name -> preloaded portrait texture key (see BootScene). Speakers
@@ -31,6 +33,8 @@ const SPEAKER_PORTRAITS: Record<string, string> = {
   'リン': 'portrait_drift',
   'カメイ': 'portrait_aegis',
   'カイ': 'portrait_theorion',
+  '謎の青年': 'portrait_omeganova',
+  'レイ': 'portrait_omeganova',
 };
 
 const PORTRAIT_X = 24;
