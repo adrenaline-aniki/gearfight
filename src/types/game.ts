@@ -1,8 +1,8 @@
 import type { GearLevel } from '../config/constants';
 
 export type BattleMode = 'tutorial' | 'story' | 'free' | 'classroom';
-export type FighterId = 'hajime' | 'kakashi' | 'wizel' | 'ganrock' | 'aegis' | 'drift' | 'theorion' | 'omeganova';
-export type SpriteFighterId = 'hajime' | 'wizel' | 'kakashi' | 'ganrock' | 'aegis' | 'drift' | 'theorion' | 'omeganova';
+export type FighterId = 'hajime' | 'kakashi' | 'wizel' | 'ganrock' | 'aegis' | 'drift' | 'theorion' | 'omeganova' | 'sophislegion';
+export type SpriteFighterId = 'hajime' | 'wizel' | 'kakashi' | 'ganrock' | 'aegis' | 'drift' | 'theorion' | 'omeganova' | 'sophislegion';
 
 export type FighterState =
   | 'idle'
