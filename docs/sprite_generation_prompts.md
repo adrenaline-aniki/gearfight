@@ -60,6 +60,8 @@ text, watermark, caption, label, UI frame, border, panel, gradient background, c
 
 仕様書 §4.2「（チュートリアル）ノギ先生＋練習機カカシ」より。木目調の素体・的マーク付き、动作は「動かない→歩くだけ→ガードするだけ」の3段階のみでよく、攻撃・超必は不要。
 
+**v1からの変更点（v2で画風統一）**：v1（`kakashi_v1.png`、未採用）はフラットな塗り＋太い輪郭線で生成され、他キャラ（ハジメ・ウィズル等、グラデーションのある塗り込み・メタリックハイライト調で仕上がっている）と並べると浮いて見えた。原因は旧プロンプトの「No lighting/shading style change between poses」という指示が、他キャラのプロンプトにある `painterly` 系の記述と食い違い、AIがより単純なフラットシェーディングに倒れたためと推測される。下記プロンプトはSTYLE節を他キャラと同じ「painterly rendering, soft gradient shading, metallic highlight」路線に書き換え済み。生成後は `kakashi_v2.png` として配置すること。
+
 ```
 16-bit pixel art character reference sheet, SNES/Genesis-era fighting game sprite style, for Kakashi-kun (a simple wooden training-dummy robot used as a tutorial punching bag).
 
@@ -82,10 +84,11 @@ STYLE:
 - A simple round red-and-white archery target mark painted on the chest, used as the "aim here" cue.
 - Plain circular wooden head, no face or a single painted-on dot for an eye, minimal detail — this is a dumb training dummy, not a character.
 - Palette: mid-brown wood body (#8b6914 tone), lighter tan wood highlights (#cd853f tone), red/white target rings on the chest, black bolt/rivet details.
-- No lighting/shading style change between poses.
+- Painterly rendering to match the rest of the cast: soft gradient shading across each wood plank (darker toward the edges, warm highlight along the center), a subtle metallic sheen/specular highlight on every rivet and bolt head, gentle ambient-occlusion shadow where limb segments join the torso. Do NOT render this as flat single-tone fills with hard black outlines — every other fighter in this set uses soft painted shading, and this character must match that same rendering treatment, only simplified in silhouette/detail (not in shading technique).
+- Consistent lighting direction and shading intensity across every pose (same painterly treatment each frame, not flatter or rounder in some poses than others).
 
 NEGATIVE PROMPT:
-text, watermark, caption, label, UI frame, border, panel, gradient background, checkerboard background, drop shadow on ground, blurry edges, inconsistent scale, off-model, face, personality, weapon, extra limbs, cropped character, character touching cell edge.
+text, watermark, caption, label, UI frame, border, panel, gradient background, checkerboard background, drop shadow on ground, blurry edges, inconsistent scale, off-model, face, personality, weapon, extra limbs, cropped character, character touching cell edge, flat single-tone fill, thick hard black outline, cel-shaded/cartoon outline style, sticker style.
 ```
 
 ---
