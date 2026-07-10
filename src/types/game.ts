@@ -53,3 +53,10 @@ export interface TheoryBonusEvent {
   label: string;
   frames: number;
 }
+
+export interface DialogueLine {
+  speaker: string;
+  text: string;
+  /** Optional visual beat tied to this line, handled by DialogueScene. */
+  effect?: 'reveal-hajime' | 'awaken-hajime';
+}
