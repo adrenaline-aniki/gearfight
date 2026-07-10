@@ -47,6 +47,14 @@ export const PROCEDURAL_FIGHTERS = ['kakashi'] as const;
 
 export const ALL_SPRITE_FIGHTERS = [...SPRITE_FIGHTERS, ...PROCEDURAL_FIGHTERS] as const;
 
+// Fighters with an extracted multi-frame walk cycle (public/sprites/<id>/walk_<n>.png,
+// n = 0..count-1). Everyone else falls back to a single static `<id>_walk` texture
+// (`walk.png` on disk, or the procedural SpriteFactory texture for kakashi).
+export const SPRITE_WALK_FRAME_COUNT: Partial<Record<(typeof ALL_SPRITE_FIGHTERS)[number], number>> = {
+  hajime: 3,
+};
+export const WALK_FRAME_INTERVAL = 6; // game ticks per walk-cycle frame (60fps / 6 = 10fps)
+
 // Target on-screen height (px) for each fighter's idle pose; other poses scale uniformly with it.
 // Per-character so boss-tier fighters (final/hidden bosses) read as visibly larger than the cast.
 export const SPRITE_TARGET_HEIGHT: Record<(typeof ALL_SPRITE_FIGHTERS)[number], number> = {

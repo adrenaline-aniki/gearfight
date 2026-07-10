@@ -20,7 +20,8 @@
 - 教室モード（同一端末2P対戦、マルチタッチ）
 - チュートリアル第0章（vs カカシくん）
 - モード選択に以下のストーリー戦が選択可能：第1章(vs ソニカ/ウィズル)、第2章(vs ゴウケン/ガンロック)、第3章(vs リン/ドリフト)、第4章(vs カメイ/アイギス)、第5章(vs カイ/テオリオン)、最終章(vs オメガノヴァ)、隠しボス(vs ソフィス・レギオン)
-- 汎用会話再生シーン `src/scenes/DialogueScene.ts`（タップ送り・スキップ可、`DialogueLine[]`を再生するだけの薄いプレイヤー。仕様書§5.2「章開始デモ」の受け皿として今後の各章導入にも流用予定）。会話の話者に応じて顔ポートレート（`public/sprites/portraits/`）を自動表示する仕組みあり（`DialogueScene.ts`の`SPEAKER_PORTRAITS`マップ、話者名→テクスチャキーの対応）
+- 汎用会話再生シーン `src/scenes/DialogueScene.ts`（タップ送り・スキップ可、`DialogueLine[]`を再生するだけの薄いプレイヤー。仕様書§5.2「章開始デモ」の受け皿として今後の各章導入にも流用予定）。会話の話者に応じて顔ポートレート（`public/sprites/portraits/`）を自動表示する仕組みあり（`DialogueScene.ts`の`SPEAKER_CHARACTER`マップ、話者名→キャラid→`resolvePortraitKey()`でテクスチャキー解決）
+- 歩行アニメーション（2026-07-10修正）：`Fighter.redraw()`が移動中のフレームで呼ばれておらず、歩行中もスプライトが直前のポーズ（大抵idle）に固定されたままx座標だけ動く「スーッと滑る」不具合があった。`BattleScene.update()`で毎フレーム`redraw()`を呼ぶよう修正し、根本原因を解消。あわせてハジメくんのみ、元のAI生成シート（`hajime_v2.png`）に埋もれていた未使用の歩行3コマ（`public/sprites/hajime/walk_0/1/2.png`）を再抽出し、`Fighter.ts`にping-pong方式のコマ送りアニメーション（`SPRITE_WALK_FRAME_COUNT`/`WALK_FRAME_INTERVAL`、`src/config/constants.ts`）を実装。他キャラは元シートに複数歩行コマがあるか未確認・未抽出のため、従来通り静止1枚（`walk.png`）にフォールバック（`walkFrames.length<=1`の分岐）——ヘッドレスブラウザで実際に歩かせて確認済み、コンソールエラーなし。他キャラへの展開は今後の課題
 - 戦闘後にも会話を挟める仕組みあり：`BattleConfig.postWinDialogue`（`DialogueLine[]`）を設定すると、プレイヤーが勝利した際の結果画面ボタンが「モード選択へ」ではなく「つづける ▶」になり、`DialogueScene`を経由してから`ModeSelectScene`に戻る（`BattleScene.ts`の`endRound`→`showResult(text, playerWon)`→`menu`ボタンのハンドラ）。CPU勝利時やタイムアップ判定では発火しない（`winner === 'p1'`のクリーンな勝利時のみ）
 - オープニング（主人公が父からハジメくんを譲り受ける会話、`src/data/openingDialogue.ts`）をモード選択の先頭から、最終章の前振り＋勝利後会話（`src/data/finalChapterDialogue.ts`の`FINAL_CHAPTER_INTRO`/`FINAL_CHAPTER_VICTORY`）を「最終章（vs オメガノヴァ）」ボタンから、それぞれ組み込み済み
 - Firebase設定はプレースホルダのみ（`.env` 未設定でも動く。実際のオンライン対戦(フェーズ2)は未実装）

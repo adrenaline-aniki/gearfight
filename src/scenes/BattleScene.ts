@@ -147,6 +147,8 @@ export class BattleScene extends Phaser.Scene {
     this.p2.tickState();
     this.p1.applyPhysics();
     this.p2.applyPhysics();
+    this.p1.redraw();
+    this.p2.redraw();
 
     const deltaSec = (delta / 1000) * this.gameFeel.getTimeScale();
     this.p1.tickHeat(deltaSec);

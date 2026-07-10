@@ -14,6 +14,8 @@ import {
   SHIFT_FRAMES,
   SPRITE_IDLE_SOURCE_HEIGHT,
   SPRITE_TARGET_HEIGHT,
+  SPRITE_WALK_FRAME_COUNT,
+  WALK_FRAME_INTERVAL,
   type GearLevel,
 } from '../config/constants';
 import type { PlayerInput } from '../types/game';
@@ -32,6 +34,10 @@ export class Fighter {
   sprite!: Phaser.GameObjects.Image;
   private spriteScale = 1;
   private currentPose = '';
+  private walkFrames: string[];
+  private walkFrameIndex = 0;
+  private walkFrameTimer = 0;
+  private walkFrameDir: 1 | -1 = 1;
 
   x: number;
   y: number;
@@ -66,6 +72,10 @@ export class Fighter {
 
   constructor(scene: Phaser.Scene, config: FighterConfig) {
     this.id = config.id;
+    const walkFrameCount = SPRITE_WALK_FRAME_COUNT[this.id] ?? 1;
+    this.walkFrames = walkFrameCount > 1
+      ? Array.from({ length: walkFrameCount }, (_, i) => `${this.id}_walk_${i}`)
+      : [`${this.id}_walk`];
     this.name = config.name;
     this.x = config.x;
     this.y = GROUND_Y;
@@ -102,12 +112,37 @@ export class Fighter {
     }
   }
 
+  private nextWalkFrameTexture(): string {
+    if (this.walkFrames.length <= 1) return this.walkFrames[0];
+
+    this.walkFrameTimer += 1;
+    if (this.walkFrameTimer >= WALK_FRAME_INTERVAL) {
+      this.walkFrameTimer = 0;
+      this.walkFrameIndex += this.walkFrameDir;
+      const last = this.walkFrames.length - 1;
+      if (this.walkFrameIndex >= last) { this.walkFrameIndex = last; this.walkFrameDir = -1; }
+      else if (this.walkFrameIndex <= 0) { this.walkFrameIndex = 0; this.walkFrameDir = 1; }
+    }
+    return this.walkFrames[this.walkFrameIndex];
+  }
+
   private redrawSprite() {
     const sprite = this.sprite;
     const pose = this.poseForState();
-    if (pose !== this.currentPose) {
-      sprite.setTexture(`${this.id}_${pose}`);
-      this.currentPose = pose;
+
+    let textureKey: string;
+    if (pose === 'walk') {
+      textureKey = this.nextWalkFrameTexture();
+    } else {
+      this.walkFrameIndex = 0;
+      this.walkFrameTimer = 0;
+      this.walkFrameDir = 1;
+      textureKey = `${this.id}_${pose}`;
+    }
+
+    if (textureKey !== this.currentPose) {
+      sprite.setTexture(textureKey);
+      this.currentPose = textureKey;
     }
 
     if (this.overheatTimer > 0) {
