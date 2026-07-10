@@ -3,6 +3,10 @@ export const GAME_HEIGHT = 216;
 export const FPS = 60;
 export const GROUND_Y = 170;
 
+// Bitmap-style font (full JP glyph coverage); sized in multiples of 10 to
+// stay pixel-aligned with its native 10x10 glyph grid and avoid blurry scaling.
+export const PIXEL_FONT = 'PixelMplus10';
+
 export const GEAR_TABLE = {
   1: { ratio: 0.33, teeth: '30:10', speedMul: 1.6, startup: 5, damageMul: 0.5, recovery: 14, guardBreak: false, heatPerSec: -20 },
   2: { ratio: 0.6, teeth: '25:15', speedMul: 1.3, startup: 7, damageMul: 0.75, recovery: 18, guardBreak: false, heatPerSec: -10 },
@@ -44,7 +48,18 @@ export const PROCEDURAL_FIGHTERS = ['kakashi'] as const;
 export const ALL_SPRITE_FIGHTERS = [...SPRITE_FIGHTERS, ...PROCEDURAL_FIGHTERS] as const;
 
 // Target on-screen height (px) for each fighter's idle pose; other poses scale uniformly with it.
-export const SPRITE_TARGET_HEIGHT = 62;
+// Per-character so boss-tier fighters (final/hidden bosses) read as visibly larger than the cast.
+export const SPRITE_TARGET_HEIGHT: Record<(typeof ALL_SPRITE_FIGHTERS)[number], number> = {
+  hajime: 62,
+  wizel: 62,
+  kakashi: 62,
+  ganrock: 62,
+  aegis: 62,
+  drift: 62,
+  theorion: 62,
+  omeganova: 82,
+  sophislegion: 82,
+};
 export const SPRITE_IDLE_SOURCE_HEIGHT: Record<(typeof ALL_SPRITE_FIGHTERS)[number], number> = {
   hajime: 180,
   wizel: 166,

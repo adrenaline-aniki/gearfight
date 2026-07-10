@@ -20,6 +20,9 @@ export class BootScene extends Phaser.Scene {
 
   create() {
     generateKakashiTextures(this);
-    this.scene.start('TitleScene');
+    Promise.all([
+      document.fonts.load('10px "PixelMplus10"'),
+      document.fonts.load('bold 10px "PixelMplus10"'),
+    ]).catch(() => {}).then(() => this.scene.start('TitleScene'));
   }
 }

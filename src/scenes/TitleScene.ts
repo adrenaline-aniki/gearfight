@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GAME_HEIGHT, GAME_WIDTH } from '../config/constants';
+import { GAME_HEIGHT, GAME_WIDTH, PIXEL_FONT } from '../config/constants';
 import { AudioManager } from '../systems/AudioManager';
 
 export class TitleScene extends Phaser.Scene {
@@ -24,22 +24,22 @@ export class TitleScene extends Phaser.Scene {
     }
 
     this.add.text(GAME_WIDTH / 2, 50, 'GEAR FIGHT', {
-      fontSize: '28px',
+      fontSize: '30px',
       color: '#ffffff',
-      fontFamily: 'sans-serif',
+      fontFamily: PIXEL_FONT,
       fontStyle: 'bold',
     }).setOrigin(0.5);
 
-    this.add.text(GAME_WIDTH / 2, 78, '〜 理（リクツ）で勝つ格闘ゲーム 〜', {
-      fontSize: '8px',
+    this.add.text(GAME_WIDTH / 2, 80, '〜 理（リクツ）で勝つ格闘ゲーム 〜', {
+      fontSize: '10px',
       color: '#aaaacc',
-      fontFamily: 'sans-serif',
+      fontFamily: PIXEL_FONT,
     }).setOrigin(0.5);
 
     const startBtn = this.add.text(GAME_WIDTH / 2, 140, 'タップでスタート', {
-      fontSize: '12px',
+      fontSize: '10px',
       color: '#ffdd44',
-      fontFamily: 'sans-serif',
+      fontFamily: PIXEL_FONT,
       backgroundColor: '#333355',
       padding: { x: 12, y: 6 },
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });

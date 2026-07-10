@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GEAR_TABLE, GAME_WIDTH } from '../config/constants';
+import { GEAR_TABLE, GAME_WIDTH, PIXEL_FONT } from '../config/constants';
 import type { Fighter } from '../entities/Fighter';
 import type { TheoryBonusEvent } from '../types/game';
 
@@ -36,11 +36,11 @@ export class BattleHUD {
     this.superBar = this.scene.add.graphics();
     this.meshGlow = this.scene.add.graphics();
 
-    this.gearText = this.scene.add.text(8, 24, '', { fontSize: '8px', color: '#fff', fontFamily: 'monospace' });
-    this.ratioText = this.scene.add.text(8, 34, '', { fontSize: '7px', color: '#aaa', fontFamily: 'monospace' });
-    this.timerText = this.scene.add.text(GAME_WIDTH / 2, 4, '', { fontSize: '10px', color: '#fff', fontFamily: 'monospace' }).setOrigin(0.5, 0);
-    this.theoryText = this.scene.add.text(GAME_WIDTH - 8, 24, '', { fontSize: '7px', color: '#ffdd44', fontFamily: 'monospace' }).setOrigin(1, 0);
-    this.hintText = this.scene.add.text(GAME_WIDTH / 2, 50, '', { fontSize: '8px', color: '#88ff88', fontFamily: 'sans-serif', align: 'center', wordWrap: { width: 340 } }).setOrigin(0.5, 0);
+    this.gearText = this.scene.add.text(8, 24, '', { fontSize: '10px', color: '#fff', fontFamily: PIXEL_FONT });
+    this.ratioText = this.scene.add.text(8, 36, '', { fontSize: '10px', color: '#aaa', fontFamily: PIXEL_FONT });
+    this.timerText = this.scene.add.text(GAME_WIDTH / 2, 4, '', { fontSize: '10px', color: '#fff', fontFamily: PIXEL_FONT }).setOrigin(0.5, 0);
+    this.theoryText = this.scene.add.text(GAME_WIDTH - 8, 24, '', { fontSize: '10px', color: '#ffdd44', fontFamily: PIXEL_FONT }).setOrigin(1, 0);
+    this.hintText = this.scene.add.text(GAME_WIDTH / 2, 56, '', { fontSize: '10px', color: '#88ff88', fontFamily: PIXEL_FONT, align: 'center', wordWrap: { width: 340 } }).setOrigin(0.5, 0);
 
     this.container.add([
       this.p1HpBar, this.p2HpBar, this.heatBar, this.superBar, this.meshGlow,
@@ -59,15 +59,15 @@ export class BattleHUD {
     this.heatBar.clear();
     const heatColor = p1.heat > 85 ? 0xff0000 : p1.heat > 60 ? 0xffaa00 : 0x44aa44;
     this.heatBar.fillStyle(0x333333);
-    this.heatBar.fillRect(8, 44, 60, 4);
+    this.heatBar.fillRect(8, 49, 60, 4);
     this.heatBar.fillStyle(heatColor);
-    this.heatBar.fillRect(8, 44, 60 * (p1.heat / 100), 4);
+    this.heatBar.fillRect(8, 49, 60 * (p1.heat / 100), 4);
 
     this.superBar.clear();
     this.superBar.fillStyle(0x333333);
-    this.superBar.fillRect(72, 44, 40, 4);
+    this.superBar.fillRect(72, 49, 40, 4);
     this.superBar.fillStyle(0xffdd00);
-    this.superBar.fillRect(72, 44, 40 * (p1.superGauge / 100), 4);
+    this.superBar.fillRect(72, 49, 40 * (p1.superGauge / 100), 4);
 
     const mins = Math.floor(timeLeft / 60);
     const secs = Math.floor(timeLeft % 60);
@@ -86,7 +86,7 @@ export class BattleHUD {
     const popup = this.scene.add.text(GAME_WIDTH / 2, 80, `THEORY BONUS!\n${event.label}`, {
       fontSize: '10px',
       color: '#ffdd44',
-      fontFamily: 'sans-serif',
+      fontFamily: PIXEL_FONT,
       align: 'center',
       backgroundColor: '#000000aa',
       padding: { x: 6, y: 4 },

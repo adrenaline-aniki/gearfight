@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GAME_HEIGHT, GAME_WIDTH } from '../config/constants';
+import { GAME_HEIGHT, GAME_WIDTH, PIXEL_FONT } from '../config/constants';
 import type { InputManager } from '../systems/InputManager';
 
 export class TouchControls {
@@ -54,7 +54,7 @@ export class TouchControls {
 
     buttons.forEach((b) => {
       const btn = this.scene.add.circle(b.x, btnY, 14, 0x3498db, 0.5).setInteractive();
-      const label = this.scene.add.text(b.x, btnY, b.label, { fontSize: '7px', color: '#fff' }).setOrigin(0.5);
+      const label = this.scene.add.text(b.x, btnY, b.label, { fontSize: '10px', color: '#fff', fontFamily: PIXEL_FONT }).setOrigin(0.5);
       btn.on('pointerdown', b.action);
       this.container.add([btn, label]);
     });

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GAME_HEIGHT, GAME_WIDTH, GROUND_Y } from '../config/constants';
+import { GAME_HEIGHT, GAME_WIDTH, GROUND_Y, PIXEL_FONT } from '../config/constants';
 import { AIController } from '../ai/AIController';
 import { Fighter } from '../entities/Fighter';
 import { AudioManager } from '../systems/AudioManager';
@@ -110,7 +110,7 @@ export class BattleScene extends Phaser.Scene {
       ? `チュートリアル Step ${this.tutorialStep}`
       : this.config.mode === 'classroom' ? '教室モード 1本勝負' : 'ROUND 1';
     const text = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2, label, {
-      fontSize: '16px', color: '#fff', fontFamily: 'sans-serif', fontStyle: 'bold',
+      fontSize: '20px', color: '#fff', fontFamily: PIXEL_FONT, fontStyle: 'bold',
     }).setOrigin(0.5).setDepth(150);
 
     this.time.delayedCall(1200, () => text.destroy());
@@ -275,10 +275,10 @@ export class BattleScene extends Phaser.Scene {
 
   private promptClassroomName() {
     const overlay = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.7).setDepth(200);
-    const label = this.add.text(GAME_WIDTH / 2, 80, '勝者の名前を入力', { fontSize: '10px', color: '#fff' }).setOrigin(0.5).setDepth(201);
-    const name = this.add.text(GAME_WIDTH / 2, 100, 'プレイヤー1', { fontSize: '12px', color: '#ffdd44', backgroundColor: '#333', padding: { x: 8, y: 4 } }).setOrigin(0.5).setDepth(201).setInteractive();
+    const label = this.add.text(GAME_WIDTH / 2, 80, '勝者の名前を入力', { fontSize: '10px', color: '#fff', fontFamily: PIXEL_FONT }).setOrigin(0.5).setDepth(201);
+    const name = this.add.text(GAME_WIDTH / 2, 100, 'プレイヤー1', { fontSize: '10px', color: '#ffdd44', fontFamily: PIXEL_FONT, backgroundColor: '#333', padding: { x: 8, y: 4 } }).setOrigin(0.5).setDepth(201).setInteractive();
 
-    const confirm = this.add.text(GAME_WIDTH / 2, 130, '決定', { fontSize: '10px', color: '#fff', backgroundColor: '#2c3e6e', padding: { x: 10, y: 4 } }).setOrigin(0.5).setDepth(201).setInteractive();
+    const confirm = this.add.text(GAME_WIDTH / 2, 130, '決定', { fontSize: '10px', color: '#fff', fontFamily: PIXEL_FONT, backgroundColor: '#2c3e6e', padding: { x: 10, y: 4 } }).setOrigin(0.5).setDepth(201).setInteractive();
 
     confirm.on('pointerdown', () => {
       SaveManager.addClassroomWin('プレイヤー1');
@@ -294,22 +294,22 @@ export class BattleScene extends Phaser.Scene {
     this.audio.stopBgm();
     this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.6).setDepth(180);
     this.add.text(GAME_WIDTH / 2, 70, text, {
-      fontSize: '12px', color: '#fff', fontFamily: 'sans-serif', align: 'center',
+      fontSize: '20px', color: '#fff', fontFamily: PIXEL_FONT, fontStyle: 'bold', align: 'center',
     }).setOrigin(0.5).setDepth(181);
 
     const theoryDetail = this.theoryEvents.length > 0
       ? `\n理論家ポイント: ${this.theoryEvents.map((e) => e.label).join(' / ')}`
       : '';
     this.add.text(GAME_WIDTH / 2, 110, `パーフェクトシフト: ${this.p1.perfectShiftCount}回${theoryDetail}`, {
-      fontSize: '8px', color: '#aaa', fontFamily: 'sans-serif', align: 'center', wordWrap: { width: 340 },
+      fontSize: '10px', color: '#aaa', fontFamily: PIXEL_FONT, align: 'center', wordWrap: { width: 340 },
     }).setOrigin(0.5).setDepth(181);
 
     const retry = this.add.text(GAME_WIDTH / 2, 150, 'もう一度たたかう', {
-      fontSize: '10px', color: '#ffdd44', backgroundColor: '#333', padding: { x: 10, y: 4 },
+      fontSize: '10px', color: '#ffdd44', fontFamily: PIXEL_FONT, backgroundColor: '#333', padding: { x: 10, y: 4 },
     }).setOrigin(0.5).setDepth(181).setInteractive();
 
     const menu = this.add.text(GAME_WIDTH / 2, 175, 'モード選択へ', {
-      fontSize: '9px', color: '#aaa', fontFamily: 'sans-serif',
+      fontSize: '10px', color: '#aaa', fontFamily: PIXEL_FONT,
     }).setOrigin(0.5).setDepth(181).setInteractive();
 
     retry.on('pointerdown', () => this.scene.restart(this.config));

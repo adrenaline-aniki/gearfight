@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GAME_HEIGHT, GAME_WIDTH } from '../config/constants';
+import { GAME_HEIGHT, GAME_WIDTH, PIXEL_FONT } from '../config/constants';
 import { AudioManager } from '../systems/AudioManager';
 import { SaveManager } from '../systems/SaveManager';
 import type { BattleConfig } from '../types/game';
@@ -18,8 +18,8 @@ export class ModeSelectScene extends Phaser.Scene {
 
     this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x1a1a2e);
 
-    this.add.text(GAME_WIDTH / 2, 16, 'モード選択', {
-      fontSize: '14px', color: '#fff', fontFamily: 'sans-serif',
+    this.add.text(GAME_WIDTH / 2, 13, 'モード選択', {
+      fontSize: '20px', color: '#fff', fontFamily: PIXEL_FONT, fontStyle: 'bold',
     }).setOrigin(0.5);
 
     const save = SaveManager.load();
@@ -37,10 +37,10 @@ export class ModeSelectScene extends Phaser.Scene {
     ];
 
     modes.forEach((m, i) => {
-      const y = 30 + i * 14;
+      const y = 37 + i * 15;
       const btn = this.add.text(GAME_WIDTH / 2, y, m.label, {
-        fontSize: '8px', color: '#fff', fontFamily: 'sans-serif',
-        backgroundColor: '#2c3e6e', padding: { x: 10, y: 2 },
+        fontSize: '10px', color: '#fff', fontFamily: PIXEL_FONT,
+        backgroundColor: '#2c3e6e', padding: { x: 10, y: 1 },
       }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
       btn.on('pointerdown', () => {
@@ -49,8 +49,8 @@ export class ModeSelectScene extends Phaser.Scene {
       });
     });
 
-    this.assistText = this.add.text(GAME_WIDTH / 2, 178, `アシストモード: ${save.assistMode ? 'ON' : 'OFF'}`, {
-      fontSize: '9px', color: '#88ff88', fontFamily: 'sans-serif',
+    this.assistText = this.add.text(GAME_WIDTH / 2, 186, `アシストモード: ${save.assistMode ? 'ON' : 'OFF'}`, {
+      fontSize: '10px', color: '#88ff88', fontFamily: PIXEL_FONT,
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
     this.assistText.on('pointerdown', () => {
@@ -61,7 +61,7 @@ export class ModeSelectScene extends Phaser.Scene {
     });
 
     const back = this.add.text(8, GAME_HEIGHT - 14, '← タイトル', {
-      fontSize: '8px', color: '#aaa', fontFamily: 'sans-serif',
+      fontSize: '10px', color: '#aaa', fontFamily: PIXEL_FONT,
     }).setInteractive({ useHandCursor: true });
     back.on('pointerdown', () => this.scene.start('TitleScene'));
   }

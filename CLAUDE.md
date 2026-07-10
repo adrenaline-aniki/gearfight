@@ -29,6 +29,22 @@
 - 殿堂入り編・ギア検定・環境イベント（フェーズ3）
 - Firebaseオンライン対戦（フェーズ4）
 
+## UI/フォントとキャラサイズ（16bit風グラフィック化対応）
+
+ユーザーから「文字がガビガビ（ジャギーが目立つ）」「PCフルスクリーン再生を考慮した綺麗な16bit(GBA/SNES)風にしてほしい」「ボスキャラはもっと大きく見せたい」との指摘があり対応済み。
+
+### フォント刷新
+- 原因：ゲーム内部解像度は384x216固定（`GAME_WIDTH`/`GAME_HEIGHT`）で、`pixelArt:true`によりcanvas全体がニアレストネイバーで4〜5倍に拡大される。以前は`sans-serif`等の一般的なアンチエイリアス済みベクターフォントを7〜9pxという極小サイズで描画していたため、荒いアンチエイリアスの縁がそのまま拡大され「ガビガビ」に見えていた。
+- 対応：**PixelMplus10**（M+ BITMAP FONTSベースの日本語対応ピクセルフォント、OFL/M+ FONT LICENSE、`itouhiro/PixelMplus`）を採用。ひらがな/カタカナ/JIS第2水準漢字までカバーし、10x10ドットグリッドを基準に設計されているため小サイズでも滲まず読みやすい。
+- フォントファイルは `public/fonts/PixelMplus10-{Regular,Bold}.ttf` に配置、`src/style.css` に `@font-face` 定義。`src/config/constants.ts` の `PIXEL_FONT = 'PixelMplus10'` を全テキストの `fontFamily` に使用。
+- **フォントサイズは必ずPixelMplus10のネイティブグリッド(10px)の倍数にすること**（10, 20, 30...）。7px/12px/14px等の中途半端なサイズはグリフを非整数倍に再スケールすることになり、ビットマップ的な書体でも滲みが再発する。
+- **フォント読み込みタイミングに注意**：`document.fonts.load()`でフォントの読み込み完了を待たずにPhaser Textオブジェクトを生成すると、フォールバックフォントで一度描画されてしまい、後からフォントが読み込まれても再描画されない（Phaser既知の挙動）。`src/scenes/BootScene.ts`の`create()`で`Promise.all([document.fonts.load(...), ...])`を待ってから`TitleScene`に遷移することで回避。
+
+### キャラクターサイズのメリハリ
+- 以前は `SPRITE_TARGET_HEIGHT` が全キャラ共通の単一定数（62px）で、`SPRITE_IDLE_SOURCE_HEIGHT`との比率だけでスケールを決めていたため、**元画像の見切り方次第でボスキャラの方が主人公より小さく表示される**という不自然な逆転が発生していた（ソフィス・レギオン等）。
+- 対応：`SPRITE_TARGET_HEIGHT` を `Record<FighterId, number>` に変更（`src/config/constants.ts`）。主人公・ライバル格（hajime/wizel/ganrock/aegis/drift/theorion/kakashi）は62pxで統一、**最終ボス級（omeganova, sophislegion）は82px**にして「一回り大きいボス」感を明示的に演出。新しいボスキャラを追加する際もこのパターン（通常キャラより2〜3割高めの値）を踏襲すること。
+- 注意点：ヒットボックスのサイズ（`Fighter.ts`の`reach`/`height`等）はスプライトの見た目スケールと連動しておらず固定値なので、キャラを大きくしてもヒットボックスは変わらない。今回は見た目の変更のみで許容範囲としたが、判定と見た目の乖離が気になる場合は要検討。
+
 ## スプライト素材（重要・再現性のためのノウハウ）
 
 ### 2つの生成アプローチ

@@ -74,7 +74,7 @@ export class Fighter {
     this.hp = config.maxHp;
     if (config.gear) this.gear = config.gear;
 
-    this.spriteScale = SPRITE_TARGET_HEIGHT / SPRITE_IDLE_SOURCE_HEIGHT[this.id];
+    this.spriteScale = SPRITE_TARGET_HEIGHT[this.id] / SPRITE_IDLE_SOURCE_HEIGHT[this.id];
     this.sprite = scene.add.image(0, SPRITE_FOOT_OFFSET, `${this.id}_idle`);
     this.sprite.setOrigin(0.5, 1);
     this.sprite.setScale(this.spriteScale);

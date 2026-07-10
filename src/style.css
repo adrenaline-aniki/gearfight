@@ -1,3 +1,17 @@
+@font-face {
+  font-family: 'PixelMplus10';
+  src: url('/fonts/PixelMplus10-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'PixelMplus10';
+  src: url('/fonts/PixelMplus10-Bold.ttf') format('truetype');
+  font-weight: bold;
+  font-display: block;
+}
+
 * {
   margin: 0;
   padding: 0;
