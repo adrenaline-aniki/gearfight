@@ -5,6 +5,7 @@ import { Fighter } from '../entities/Fighter';
 import { AudioManager } from '../systems/AudioManager';
 import { GameFeel } from '../systems/GameFeel';
 import { InputManager } from '../systems/InputManager';
+import { spawnMechanismOverlay } from '../systems/MechanismOverlay';
 import { SaveManager } from '../systems/SaveManager';
 import { BattleHUD } from '../ui/BattleHUD';
 import { TouchControls } from '../ui/TouchControls';
@@ -193,6 +194,7 @@ export class BattleScene extends Phaser.Scene {
       this.gameFeel.applyHitstop(isStrong ? 8 : 4);
       this.gameFeel.applyShake(isStrong ? 4 : 2, isStrong ? 8 : 4);
       this.gameFeel.spawnHitSpark(defender.x, defender.y - 20);
+      spawnMechanismOverlay(this, attacker.x, attacker.y - 30, isStrong ? 'lever-crank' : 'slider-crank', attacker.facing);
       this.audio.playSe(isGuarded ? 'guard' : isStrong ? 'hit_strong' : 'hit_weak');
 
       if (isShiftHit) this.addTheoryBonus('shift_gap', 'シフト中は無防備！');
