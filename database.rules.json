@@ -1,0 +1,15 @@
+{
+  "rules": {
+    "rooms": {
+      "$roomId": {
+        ".read": true,
+        ".write": true,
+        "players": {
+          "$playerId": {
+            ".validate": "newData.hasChildren(['x', 'y', 'facing'])"
+          }
+        }
+      }
+    }
+  }
+}

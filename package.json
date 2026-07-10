@@ -1,0 +1,23 @@
+{
+  "name": "gearfight",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "deploy": "npm run build && firebase deploy",
+    "deploy:hosting": "npm run build && firebase deploy --only hosting",
+    "deploy:database": "firebase deploy --only database"
+  },
+  "devDependencies": {
+    "firebase-tools": "^15.22.4",
+    "typescript": "~6.0.2",
+    "vite": "^8.1.1"
+  },
+  "dependencies": {
+    "firebase": "^12.15.0",
+    "phaser": "^3.90.0"
+  }
+}
