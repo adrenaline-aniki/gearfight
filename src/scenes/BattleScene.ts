@@ -101,7 +101,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private getName(id: string): string {
-    const names: Record<string, string> = { hajime: 'ハジメ', kakashi: 'カカシくん', wizel: 'ウィズル', ganrock: 'ガンロック', aegis: 'アイギス', drift: 'ドリフト', theorion: 'テオリオン' };
+    const names: Record<string, string> = { hajime: 'ハジメ', kakashi: 'カカシくん', wizel: 'ウィズル', ganrock: 'ガンロック', aegis: 'アイギス', drift: 'ドリフト', theorion: 'テオリオン', omeganova: 'オメガノヴァ' };
     return names[id] ?? id;
   }
 
