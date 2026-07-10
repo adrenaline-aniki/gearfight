@@ -52,6 +52,10 @@ export const ALL_SPRITE_FIGHTERS = [...SPRITE_FIGHTERS, ...PROCEDURAL_FIGHTERS] 
 // (`walk.png` on disk, or the procedural SpriteFactory texture for kakashi).
 export const SPRITE_WALK_FRAME_COUNT: Partial<Record<(typeof ALL_SPRITE_FIGHTERS)[number], number>> = {
   hajime: 3,
+  wizel: 2,
+  ganrock: 2,
+  aegis: 2,
+  drift: 2,
 };
 export const WALK_FRAME_INTERVAL = 6; // game ticks per walk-cycle frame (60fps / 6 = 10fps)
 
