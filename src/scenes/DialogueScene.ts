@@ -12,14 +12,25 @@ interface DialogueSceneData {
 const SPEAKER_COLORS: Record<string, string> = {
   '父さん': '#ffdd44',
   '主人公': '#66ccff',
-  'ノギ先生': '#ff99cc',
+  'ノギ先生': '#7fd9c4',
+  'ソニカ': '#ff8866',
+  'ゴウケン': '#dd8833',
+  'リン': '#88cc55',
+  'カメイ': '#8899dd',
+  'カイ': '#cccccc',
 };
 
 // Speaker name -> preloaded portrait texture key (see BootScene). Speakers
-// without an entry (narration, 主人公) just show no face icon.
+// without an entry (narration) just show no face icon.
 const SPEAKER_PORTRAITS: Record<string, string> = {
   '父さん': 'portrait_takumi',
   'ノギ先生': 'portrait_nogi',
+  '主人公': 'portrait_hajime',
+  'ソニカ': 'portrait_wizel',
+  'ゴウケン': 'portrait_ganrock',
+  'リン': 'portrait_drift',
+  'カメイ': 'portrait_aegis',
+  'カイ': 'portrait_theorion',
 };
 
 const PORTRAIT_X = 24;
