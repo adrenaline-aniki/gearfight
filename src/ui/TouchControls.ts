@@ -63,21 +63,17 @@ export class TouchControls {
   }
 
   private applyStick(player: 'p1' | 'p2', dx: number, dy: number) {
-    const input = {
+    this.input.setTouchHold(player, {
       left: dx < -6,
       right: dx > 6,
       up: dy < -6,
       down: dy > 6,
       jump: dy < -12,
-    };
-    if (player === 'p1') this.input.setP1(input);
-    else this.input.setP2(input);
+    });
   }
 
   private tap(player: 'p1' | 'p2', action: 'weak' | 'strong' | 'gearUp' | 'gearDown') {
-    const patch = { [action]: true };
-    if (player === 'p1') this.input.setP1(patch);
-    else this.input.setP2(patch);
+    this.input.triggerTouchButton(player, action);
   }
 
   setVisible(v: boolean) {

@@ -15,6 +15,13 @@ export class AIController {
   private thinkTimer = 0;
   private stage = 0;
 
+  // The last decision's movement, held across the thinkTimer cooldown below -
+  // otherwise a walk decision only actually moved for the single frame it was
+  // made, then went idle for the rest of the cooldown, over and over, which
+  // reads as constant flicker between walk/idle poses instead of a smooth walk.
+  private heldLeft = false;
+  private heldRight = false;
+
   // Guard reaction state: decided once per incoming attack (not every frame),
   // with a short delay before the guard actually goes up so it reads as a
   // reaction rather than a psychic block.
@@ -38,10 +45,17 @@ export class AIController {
     }
 
     this.thinkTimer -= 1;
-    if (this.thinkTimer > 0) return { ...EMPTY_INPUT };
+    if (this.thinkTimer > 0) {
+      // Still "thinking" - keep holding whatever movement the last decision
+      // committed to (see heldLeft/heldRight) rather than going empty every
+      // other frame. Buttons/shifts are one-shot and are not re-issued here.
+      return { ...EMPTY_INPUT, left: this.heldLeft, right: this.heldRight };
+    }
 
-    if (this.profile === 'kakashi') return this.kakashiAI(fighter);
-    return this.sonicaAI(fighter, opponent);
+    const input = this.profile === 'kakashi' ? this.kakashiAI(fighter) : this.sonicaAI(fighter, opponent);
+    this.heldLeft = input.left;
+    this.heldRight = input.right;
+    return input;
   }
 
   private tryBlock(fighter: Fighter, opponent: Fighter): PlayerInput | null {
@@ -106,7 +120,8 @@ export class AIController {
 
     // Cash in the super the moment it's ready and the opponent is in range -
     // both attack buttons at once, same as the human input (see Fighter.processInput).
-    if (fighter.superGauge >= 100 && dist <= 70) {
+    // (Range check mirrors the super's actual hitbox reach - see the note below.)
+    if (fighter.superGauge >= 100 && dist <= 50) {
       input.weak = true;
       input.strong = true;
       this.thinkTimer = 24;
@@ -134,7 +149,11 @@ export class AIController {
       return input;
     }
 
-    if (dist > 60) {
+    // 40px is close to a weak attack's actual connecting range (hitbox reach
+    // 20 + a few px of margin) - the old 60px threshold let the CPU stop
+    // approaching and start throwing attacks well before they could land,
+    // reading as "kicking at the air". Keep closing until strikes can connect.
+    if (dist > 40) {
       input.right = fighter.x < opponent.x;
       input.left = fighter.x > opponent.x;
       // Rare jump-in for movement variety - purely cosmetic, no dedicated
