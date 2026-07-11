@@ -109,7 +109,7 @@ export class GarageScene extends Phaser.Scene {
     });
 
     this.updatePreview();
-    this.descriptionText.setText(ARM_PARTS[this.loadout.armRight].description);
+    this.descriptionText.setText(`【右腕】${ARM_PARTS[this.loadout.armRight].description}`);
 
     const back = this.add.text(8, GAME_HEIGHT - 10, '← モード選択', {
       fontSize: '10px', color: '#aaa', fontFamily: PIXEL_FONT,
@@ -142,16 +142,17 @@ export class GarageScene extends Phaser.Scene {
       const dot = this.typeDots[slot as 'armRight' | 'armLeft'];
       if (dot) dot.setPosition(nameText.x + nameText.width / 2 + 12, y).setFillStyle(TYPE_COLOR[ARM_PARTS[next as ArmPartId].type]);
       this.updatePreview();
-      this.descriptionText.setText(descriptionFor(next));
+      this.descriptionText.setText(`【${label}】${descriptionFor(next)}`);
       SaveManager.save({ loadout: this.loadout });
       this.audio.playSe('select');
     };
 
     // Tapping the part's name itself (not just the arrows) also surfaces its
     // description - lets you check pros/cons of the currently-equipped part
-    // without needing to cycle away from it first.
+    // without needing to cycle away from it first. The 【label】 prefix makes
+    // clear which of the 4 slots the text below is even describing.
     nameText.setInteractive({ useHandCursor: true });
-    nameText.on('pointerdown', () => this.descriptionText.setText(descriptionFor(this.loadout[slot])));
+    nameText.on('pointerdown', () => this.descriptionText.setText(`【${label}】${descriptionFor(this.loadout[slot])}`));
 
     const prev = this.add.text(76, y, '◀', { fontSize: '10px', color: '#88ddff', fontFamily: PIXEL_FONT })
       .setOrigin(0.5).setInteractive({ useHandCursor: true });
