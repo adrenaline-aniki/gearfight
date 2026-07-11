@@ -14,6 +14,7 @@ export class TouchControls {
   private shifterNotches: Phaser.GameObjects.Arc[] = [];
   private shifterHandle!: Phaser.GameObjects.Rectangle;
   private shifterY!: { top: number; bottom: number };
+  private stickWasUp = false;
 
   constructor(scene: Phaser.Scene, input: InputManager) {
     this.scene = scene;
@@ -27,22 +28,40 @@ export class TouchControls {
     const stick = this.scene.add.circle(cx, cy, 26, 0xffffff, 0.15).setInteractive();
     const knob = this.scene.add.circle(cx, cy, 10, 0xffffff, 0.4);
 
-    stick.on('pointerdown', (p: Phaser.Input.Pointer) => {
+    // Track the specific pointer driving the stick and follow it via the
+    // scene-wide pointer events (not stick's own pointermove/pointerup) -
+    // a GameObject's own pointer events only fire while the pointer stays
+    // over its (small, 26px) hit area, so dragging the thumb past the base
+    // before lifting - completely normal for a virtual joystick - silently
+    // stopped updates and left the stick stuck pointing in its last direction.
+    let stickPointerId: number | null = null;
+    const updateFromPointer = (p: Phaser.Input.Pointer) => {
       const dx = Phaser.Math.Clamp(p.x - cx, -20, 20);
       const dy = Phaser.Math.Clamp(p.y - cy, -20, 20);
       knob.setPosition(cx + dx, cy + dy);
       this.applyStick(dx, dy);
-    });
-    stick.on('pointermove', (p: Phaser.Input.Pointer) => {
-      if (!p.isDown) return;
-      const dx = Phaser.Math.Clamp(p.x - cx, -20, 20);
-      const dy = Phaser.Math.Clamp(p.y - cy, -20, 20);
-      knob.setPosition(cx + dx, cy + dy);
-      this.applyStick(dx, dy);
-    });
-    stick.on('pointerup', () => {
+    };
+    const releaseStick = () => {
+      stickPointerId = null;
       knob.setPosition(cx, cy);
       this.applyStick(0, 0);
+    };
+
+    stick.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      stickPointerId = p.id;
+      updateFromPointer(p);
+    });
+    this.scene.input.on('pointermove', (p: Phaser.Input.Pointer) => {
+      if (p.id !== stickPointerId) return;
+      updateFromPointer(p);
+    });
+    this.scene.input.on('pointerup', (p: Phaser.Input.Pointer) => {
+      if (p.id !== stickPointerId) return;
+      releaseStick();
+    });
+    this.scene.input.on('pointerupoutside', (p: Phaser.Input.Pointer) => {
+      if (p.id !== stickPointerId) return;
+      releaseStick();
     });
 
     this.buildGearShifter(GAME_WIDTH * 0.44);
@@ -132,16 +151,15 @@ export class TouchControls {
   }
 
   private buildActionButtons() {
-    const weakX = GAME_WIDTH * 0.68;
+    const weakX = GAME_WIDTH * 0.72;
     const strongX = GAME_WIDTH * 0.90;
     const lowY = GAME_HEIGHT - 30;
-    const jumpX = GAME_WIDTH * 0.79;
-    const jumpY = GAME_HEIGHT - 62;
 
+    // Jump moved to the stick (tilt mostly-up, diagonals included - see
+    // applyStick()) instead of its own button, at the player's request.
     const buttons: { label: string; x: number; y: number; action: () => void; color: number }[] = [
       { label: 'A', x: weakX, y: lowY, action: () => this.tap('weak'), color: 0x3498db },
       { label: 'B', x: strongX, y: lowY, action: () => this.tap('strong'), color: 0x3498db },
-      { label: '↑', x: jumpX, y: jumpY, action: () => this.tap('jump'), color: 0x2ecc71 },
     ];
 
     buttons.forEach((b) => {
@@ -159,9 +177,19 @@ export class TouchControls {
       up: dy < -6,
       down: dy > 6,
     });
+
+    // Jump: tilt the stick mostly-upward (diagonals included, dx is
+    // unconstrained) - fired once per tilt-into-the-zone, not every frame
+    // it's held, so it behaves like a single button press rather than
+    // repeat-jumping while the stick sits pinned upward.
+    const isUp = dy < -14;
+    if (isUp && !this.stickWasUp) {
+      this.input.triggerTouchButton('p1', 'jump');
+    }
+    this.stickWasUp = isUp;
   }
 
-  private tap(action: 'weak' | 'strong' | 'gearUp' | 'gearDown' | 'jump') {
+  private tap(action: 'weak' | 'strong') {
     this.input.triggerTouchButton('p1', action);
   }
 
