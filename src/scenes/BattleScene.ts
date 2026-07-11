@@ -16,7 +16,10 @@ import { BattleHUD } from '../ui/BattleHUD';
 import { TouchControls } from '../ui/TouchControls';
 import { loadFighterSprites, setLoaderBase } from '../systems/AssetPaths';
 import { SPRITE_FIGHTERS } from '../config/constants';
-import type { BattleConfig, TheoryBonusEvent, SpriteFighterId } from '../types/game';
+import {
+  TUTORIAL_STEP2_INTRO, TUTORIAL_STEP3_INTRO, TUTORIAL_STEP4_INTRO, TUTORIAL_OUTRO,
+} from '../data/tutorialDialogue';
+import type { BattleConfig, DialogueLine, TheoryBonusEvent, SpriteFighterId } from '../types/game';
 
 export class BattleScene extends Phaser.Scene {
   private config!: BattleConfig;
@@ -35,6 +38,7 @@ export class BattleScene extends Phaser.Scene {
   private roundOver = false;
   private tutorialHits = 0;
   private tutorialStep = 1;
+  private tutorialSuperLanded = false;
   private assistMode = true;
 
   constructor() {
@@ -50,6 +54,7 @@ export class BattleScene extends Phaser.Scene {
     this.theoryEvents = [];
     this.roundOver = false;
     this.tutorialHits = 0;
+    this.tutorialSuperLanded = false;
   }
 
   preload() {
@@ -106,7 +111,14 @@ export class BattleScene extends Phaser.Scene {
     const aiProfile = this.config.player2 === 'kakashi' ? 'kakashi' : 'sonica';
     this.ai = new AIController(aiProfile);
     if (this.config.mode === 'tutorial') {
-      this.ai.setKakashiStage(this.tutorialStep === 1 ? 0 : this.tutorialStep === 2 ? 1 : 2);
+      // Stage 0 (kakashi stands still) for steps 1 and 4 - both are about
+      // landing a specific attack cleanly, not about kakashi's movement.
+      const kakashiStage = this.tutorialStep === 2 ? 1 : this.tutorialStep === 3 ? 2 : 0;
+      this.ai.setKakashiStage(kakashiStage);
+      // Super move step: the gauge fills naturally from landing/taking hits
+      // in earlier steps, but guarantee it's ready here rather than leave
+      // whether it's actually full up to how the earlier steps went.
+      if (this.tutorialStep === 4) this.p1.superGauge = 100;
     }
 
     this.touch = new TouchControls(this, this.inputMgr);
@@ -272,6 +284,7 @@ export class BattleScene extends Phaser.Scene {
 
       if (this.config.mode === 'tutorial' && attacker === this.p1) {
         this.tutorialHits += 1;
+        if (isSuper) this.tutorialSuperLanded = true;
       }
     }
   }
@@ -291,6 +304,7 @@ export class BattleScene extends Phaser.Scene {
       1: '←→移動  Z:弱攻撃  X:強攻撃  Space:ジャンプ  カカシに10発当てよう',
       2: 'Q/E:ギアDOWN/UP  光る瞬間にもう一度押すとパーフェクトシフト！',
       3: 'GL4以上(Eを2回)に上げて X:強攻撃でガードブレイク！',
+      4: 'ゲージMAX時にZ+X同時押しで必殺技！ カカシに1発当てよう',
     };
     return hints[this.tutorialStep] ?? '';
   }
@@ -299,26 +313,34 @@ export class BattleScene extends Phaser.Scene {
     if (this.config.mode !== 'tutorial' || this.roundOver) return;
 
     if (this.tutorialStep === 1 && this.tutorialHits >= 10) {
-      this.advanceTutorial(2);
+      this.advanceTutorial(2, TUTORIAL_STEP2_INTRO);
     } else if (this.tutorialStep === 2 && this.p1.perfectShiftCount >= 1) {
-      this.advanceTutorial(3);
+      this.advanceTutorial(3, TUTORIAL_STEP3_INTRO);
     } else if (this.tutorialStep === 3 && this.theoryEvents.some((e) => e.id === 'guard_break')) {
+      this.advanceTutorial(4, TUTORIAL_STEP4_INTRO);
+    } else if (this.tutorialStep === 4 && this.tutorialSuperLanded) {
       this.completeTutorial();
     }
   }
 
-  private advanceTutorial(step: number) {
-    this.tutorialStep = step;
-    this.tutorialHits = 0;
-    this.ai.setKakashiStage(step === 2 ? 1 : 2);
-    this.p2.hp = this.p2.maxHp;
-    this.p1.hp = this.p1.maxHp;
-    this.showRoundAnnounce();
+  // Nogi-sensei narrates what's coming next via DialogueScene, then restarts
+  // this same BattleScene at the next tutorialStep (see init()/create()'s
+  // stage/gauge setup for that step) - a fresh Fighter pair each time, so hp
+  // resets for free instead of needing to do it here like the old in-place version.
+  private advanceTutorial(step: number, introLines: DialogueLine[]) {
+    this.roundOver = true;
+    this.scene.start('DialogueScene', {
+      lines: introLines,
+      nextScene: 'BattleScene',
+      nextData: { ...this.config, tutorialStep: step },
+    });
   }
 
   private completeTutorial() {
+    this.roundOver = true;
     SaveManager.save({ tutorialComplete: true });
-    this.showResult('チュートリアルクリア！\nメカニック免許（仮）獲得！');
+    this.config.postWinDialogue = TUTORIAL_OUTRO;
+    this.showResult('チュートリアルクリア！\nメカニック免許（仮）獲得！', true);
   }
 
   private endRound(winner: 'p1' | 'p2' | 'timeup') {
