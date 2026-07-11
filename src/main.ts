@@ -48,6 +48,15 @@ const config: Phaser.Types.Core.GameConfig = {
     default: 'arcade',
     arcade: { gravity: { x: 0, y: 0 }, debug: false },
   },
+  // Phaser only tracks 2 simultaneous pointers by default (1 + this many
+  // extra touch pointers). This game's touch layout needs the stick held
+  // down AND a button pressed at the same time as the common case, and up
+  // to 3 fingers for the super move's simultaneous weak+strong while still
+  // moving - the default silently drops whichever touch doesn't fit,
+  // which read as the gear shifter / jump / super input "not responding".
+  input: {
+    activePointers: 4,
+  },
 };
 
 const game = new Phaser.Game(config);
