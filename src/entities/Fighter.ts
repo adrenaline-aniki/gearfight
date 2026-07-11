@@ -663,16 +663,21 @@ export class Fighter {
   }
 
   syncPosition() {
-    // Small vertical bob while walking, one full up-down cycle per full
-    // walk-frame ping-pong (frame0->frame1->frame0) - a static side-view
-    // cutout sliding across flat ground doesn't read as walking at all,
-    // even with leg-pose swaps; a bounce is what actually sells the gait.
+    // Small vertical bob + horizontal sway while walking, 90 degrees out of
+    // phase with each other over one full walk-frame ping-pong (frame0->
+    // frame1->frame0) - a static side-view cutout sliding across flat ground
+    // doesn't read as walking at all, even with leg-pose swaps. The sway in
+    // particular fakes a weight-shift/reach-and-recover motion that a plain
+    // 2-frame pose swap can't sell on its own (some character's extracted
+    // walk frames are close enough to their idle pose that without this,
+    // the translation alone reads as gliding rather than stepping).
     const bobCycle = WALK_FRAME_INTERVAL * 2;
-    const bob = this.state === 'walk'
-      ? Math.sin((this.walkBobTimer % bobCycle) / bobCycle * Math.PI * 2) * 1.5
-      : 0;
+    const phase = (this.walkBobTimer % bobCycle) / bobCycle * Math.PI * 2;
+    const bob = this.state === 'walk' ? Math.sin(phase) * 1.5 : 0;
+    const sway = this.state === 'walk' ? Math.cos(phase) * 1.5 : 0;
     this.container.setPosition(this.x, this.y + bob);
     this.container.setScale(this.facing, 1);
+    this.sprite.setPosition(sway, SPRITE_FOOT_OFFSET);
   }
 
   destroy() {
