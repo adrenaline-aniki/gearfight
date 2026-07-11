@@ -512,7 +512,18 @@ export class Fighter {
   }
 
   applyPhysics() {
-    if (!this.isGrounded()) {
+    // isGrounded() is purely position-based, so on the very first frame of a
+    // jump - vy just set to JUMP_VEL, but y hasn't moved yet - it still reads
+    // as grounded. That took this whole branch, so gravity/velocity never
+    // got integrated at all: vy stayed frozen at JUMP_VEL forever, y never
+    // moved, and the very next processInput() (jump isn't in its early-return
+    // list) saw "grounded, no input" and stomped state back to 'idle' via
+    // handleMovement(). Net effect: jump instantly no-opped. Treating a
+    // negative (upward) vy as airborne even while still at ground height
+    // fixes this without touching isGrounded()'s own (position-based, used
+    // elsewhere) contract.
+    const airborne = !this.isGrounded() || this.vy < 0;
+    if (airborne) {
       this.vy += GRAVITY;
       this.y += this.vy;
       if (this.y >= GROUND_Y) {
