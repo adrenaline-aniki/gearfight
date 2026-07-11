@@ -7,12 +7,15 @@ export const GROUND_Y = 170;
 // stay pixel-aligned with its native 10x10 glyph grid and avoid blurry scaling.
 export const PIXEL_FONT = 'PixelMplus10';
 
+// Startup/recovery are in 60fps ticks. Tuned for SF2-style responsiveness:
+// low gears should feel like real jabs (~150-250ms total), high gears stay
+// deliberately heavy/telegraphed but no longer sluggish across the board.
 export const GEAR_TABLE = {
-  1: { ratio: 0.33, teeth: '30:10', speedMul: 1.6, startup: 5, damageMul: 0.5, recovery: 14, guardBreak: false, heatPerSec: -20 },
-  2: { ratio: 0.6, teeth: '25:15', speedMul: 1.3, startup: 7, damageMul: 0.75, recovery: 18, guardBreak: false, heatPerSec: -10 },
-  3: { ratio: 1.0, teeth: '20:20', speedMul: 1.0, startup: 10, damageMul: 1.0, recovery: 24, guardBreak: false, heatPerSec: 0 },
-  4: { ratio: 1.67, teeth: '15:25', speedMul: 0.8, startup: 15, damageMul: 1.5, recovery: 34, guardBreak: true, heatPerSec: 15 },
-  5: { ratio: 3.0, teeth: '10:30', speedMul: 0.6, startup: 20, damageMul: 2.2, recovery: 44, guardBreak: true, heatPerSec: 30 },
+  1: { ratio: 0.33, teeth: '30:10', speedMul: 1.6, startup: 4, damageMul: 0.5, recovery: 8, guardBreak: false, heatPerSec: -20 },
+  2: { ratio: 0.6, teeth: '25:15', speedMul: 1.3, startup: 5, damageMul: 0.75, recovery: 10, guardBreak: false, heatPerSec: -10 },
+  3: { ratio: 1.0, teeth: '20:20', speedMul: 1.0, startup: 7, damageMul: 1.0, recovery: 14, guardBreak: false, heatPerSec: 0 },
+  4: { ratio: 1.67, teeth: '15:25', speedMul: 0.8, startup: 10, damageMul: 1.5, recovery: 20, guardBreak: true, heatPerSec: 15 },
+  5: { ratio: 3.0, teeth: '10:30', speedMul: 0.6, startup: 13, damageMul: 2.2, recovery: 26, guardBreak: true, heatPerSec: 30 },
 } as const;
 
 export type GearLevel = keyof typeof GEAR_TABLE;
@@ -26,6 +29,27 @@ export const INPUT_BUFFER = 8;
 export const COYOTE_FRAMES = 3;
 export const OVERHEAT_DURATION = 180;
 export const HEAT_ON_HIT = 5;
+
+// Extra startup padding for the strong (left-arm) attack vs. weak, on top of
+// the gear's own startup+recovery.
+export const STRONG_ATTACK_EXTRA_FRAMES = 4;
+
+// Hit/block reaction durations (ticks).
+export const HITSTUN_FRAMES = 12;
+export const KNOCKDOWN_FRAMES = 30;
+export const KNOCKDOWN_DAMAGE_THRESHOLD = 60;
+export const BLOCKSTUN_FRAMES = 8;
+export const HIT_INVULN_FRAMES = 10;
+
+// Knockback distance (px) applied to the defender, away from the attacker.
+export const KNOCKBACK_HIT = 6;
+export const KNOCKBACK_BLOCK = 3;
+export const KNOCKBACK_STRONG_BONUS = 4;
+export const KNOCKBACK_KNOCKDOWN_BONUS = 4;
+
+// Guard gauge regenerates while not actively blocking/in blockstun, so a
+// single big guard-crush doesn't leave a fighter permanently guard-broken.
+export const GUARD_REGEN_PER_SEC = 20;
 
 export const AUDIO_URLS = {
   bgmTitle: '/music/next-gear.mp3',

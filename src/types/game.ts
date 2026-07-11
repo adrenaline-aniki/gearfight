@@ -13,6 +13,7 @@ export type FighterState =
   | 'attack_weak'
   | 'attack_strong'
   | 'block'
+  | 'blockstun'
   | 'shift'
   | 'hitstun'
   | 'knockdown'

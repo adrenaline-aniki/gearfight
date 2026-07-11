@@ -2,10 +2,16 @@ import Phaser from 'phaser';
 import { GROUND_Y } from '../config/constants';
 import type { FighterConfig, FighterId, FighterState } from '../types/game';
 import {
+  BLOCKSTUN_FRAMES,
   COYOTE_FRAMES,
   GEAR_TABLE,
+  GUARD_REGEN_PER_SEC,
   HEAT_ON_HIT,
+  HITSTUN_FRAMES,
+  HIT_INVULN_FRAMES,
   INPUT_BUFFER,
+  KNOCKDOWN_DAMAGE_THRESHOLD,
+  KNOCKDOWN_FRAMES,
   OVERHEAT_DURATION,
   PERFECT_SHIFT_CYCLE,
   PERFECT_SHIFT_FRAMES,
@@ -15,6 +21,7 @@ import {
   SPRITE_IDLE_SOURCE_HEIGHT,
   SPRITE_TARGET_HEIGHT,
   SPRITE_WALK_FRAME_COUNT,
+  STRONG_ATTACK_EXTRA_FRAMES,
   WALK_FRAME_INTERVAL,
   type GearLevel,
 } from '../config/constants';
@@ -108,6 +115,7 @@ export class Fighter {
       case 'attack_weak': return 'attack_weak';
       case 'attack_strong': return 'attack_strong';
       case 'block': return 'guard';
+      case 'blockstun': return 'guard';
       case 'shift': return this.stateTimer <= 4 ? 'shift_complete' : 'shift_start';
       case 'hitstun': return 'hitstun';
       case 'knockdown': return 'knockdown';
@@ -159,7 +167,7 @@ export class Fighter {
   }
 
   updateFacing(opponentX: number) {
-    if (this.state === 'shift' || this.state === 'hitstun' || this.state === 'knockdown') return;
+    if (this.state === 'shift' || this.state === 'hitstun' || this.state === 'knockdown' || this.state === 'blockstun') return;
     this.facing = opponentX >= this.x ? 1 : -1;
   }
 
@@ -200,10 +208,13 @@ export class Fighter {
       return;
     }
 
-    if (this.state === 'hitstun' || this.state === 'knockdown' || this.state === 'dead') return;
+    if (
+      this.state === 'hitstun' || this.state === 'knockdown' || this.state === 'dead'
+      || this.state === 'blockstun' || this.state === 'attack_weak' || this.state === 'attack_strong'
+    ) return;
 
     const blocking = (this.facing === 1 && input.left) || (this.facing === -1 && input.right);
-    if (blocking && this.state !== 'attack_weak' && this.state !== 'attack_strong') {
+    if (blocking) {
       this.state = 'block';
       this.hitbox = null;
       this.redraw();
@@ -261,7 +272,7 @@ export class Fighter {
   private startAttack(type: 'attack_weak' | 'attack_strong') {
     this.state = type;
     const gear = GEAR_TABLE[this.gear];
-    this.stateTimer = type === 'attack_weak' ? gear.startup + gear.recovery : gear.startup + gear.recovery + 6;
+    this.stateTimer = type === 'attack_weak' ? gear.startup + gear.recovery : gear.startup + gear.recovery + STRONG_ATTACK_EXTRA_FRAMES;
     this.attackActive = false;
     this.hitbox = null;
     this.redraw();
@@ -317,7 +328,7 @@ export class Fighter {
 
     if (this.state === 'attack_weak' || this.state === 'attack_strong') {
       const gear = GEAR_TABLE[this.gear];
-      const total = this.state === 'attack_weak' ? gear.startup + gear.recovery : gear.startup + gear.recovery + 6;
+      const total = this.state === 'attack_weak' ? gear.startup + gear.recovery : gear.startup + gear.recovery + STRONG_ATTACK_EXTRA_FRAMES;
       const elapsed = total - this.stateTimer;
 
       if (elapsed === gear.startup) {
@@ -345,7 +356,7 @@ export class Fighter {
       return;
     }
 
-    if (this.state === 'hitstun') {
+    if (this.state === 'hitstun' || this.state === 'blockstun') {
       this.stateTimer -= 1;
       if (this.stateTimer <= 0) this.state = 'idle';
       return;
@@ -421,24 +432,48 @@ export class Fighter {
 
     let dmg = amount;
     if (isShiftHit) dmg = Math.round(dmg * 1.5);
+
+    let guardHeld = isGuarded;
     if (isGuarded) {
       dmg = Math.round(dmg * 0.2);
       this.guardGauge -= 15;
       if (this.guardGauge <= 0) {
         this.guardGauge = 0;
-        isGuarded = false;
+        guardHeld = false;
         dmg = Math.round(amount * 0.5);
       }
     }
 
     this.hp = Math.max(0, this.hp - dmg);
-    this.state = dmg > 60 ? 'knockdown' : 'hitstun';
-    this.stateTimer = dmg > 60 ? 30 : 12;
-    this.invuln = 10;
+
+    if (guardHeld) {
+      // A clean block: short, actionable flinch - not the same disabling
+      // stun as getting hit clean, so blocking a string doesn't lock you out.
+      this.state = 'blockstun';
+      this.stateTimer = BLOCKSTUN_FRAMES;
+    } else {
+      this.state = dmg > KNOCKDOWN_DAMAGE_THRESHOLD ? 'knockdown' : 'hitstun';
+      this.stateTimer = dmg > KNOCKDOWN_DAMAGE_THRESHOLD ? KNOCKDOWN_FRAMES : HITSTUN_FRAMES;
+    }
+    this.invuln = HIT_INVULN_FRAMES;
     this.hitbox = null;
     this.attackActive = false;
 
     return dmg;
+  }
+
+  // Slide away from the attacker on hit/block, clamped to the stage bounds -
+  // gives attacks physical weight instead of characters standing still while trading.
+  applyKnockback(dx: number) {
+    this.x = Phaser.Math.Clamp(this.x + dx, 30, 354);
+  }
+
+  // Guard gauge regenerates while not actively guarding, so one big guard
+  // crush doesn't leave a fighter permanently unable to block for the round.
+  tickGuard(deltaSec: number) {
+    if (this.state !== 'block' && this.state !== 'blockstun') {
+      this.guardGauge = Phaser.Math.Clamp(this.guardGauge + GUARD_REGEN_PER_SEC * deltaSec, 0, 100);
+    }
   }
 
   tickHeat(deltaSec: number) {

@@ -1,5 +1,8 @@
 import Phaser from 'phaser';
-import { GAME_HEIGHT, GAME_WIDTH, GROUND_Y, PIXEL_FONT } from '../config/constants';
+import {
+  GAME_HEIGHT, GAME_WIDTH, GROUND_Y, PIXEL_FONT,
+  KNOCKBACK_BLOCK, KNOCKBACK_HIT, KNOCKBACK_KNOCKDOWN_BONUS, KNOCKBACK_STRONG_BONUS,
+} from '../config/constants';
 import { typeMatchupMultiplier } from '../config/parts';
 import { AIController } from '../ai/AIController';
 import { Fighter } from '../entities/Fighter';
@@ -156,6 +159,8 @@ export class BattleScene extends Phaser.Scene {
     const deltaSec = (delta / 1000) * this.gameFeel.getTimeScale();
     this.p1.tickHeat(deltaSec);
     this.p2.tickHeat(deltaSec);
+    this.p1.tickGuard(deltaSec);
+    this.p2.tickGuard(deltaSec);
 
     this.resolveCombat();
     this.gameFeel.update();
@@ -194,6 +199,15 @@ export class BattleScene extends Phaser.Scene {
       defender.onDamageTaken(dmg);
 
       const isStrong = attacker.state === 'attack_strong';
+
+      let knockback = defender.state === 'blockstun'
+        ? KNOCKBACK_BLOCK
+        : defender.state === 'knockdown'
+          ? KNOCKBACK_HIT + KNOCKBACK_KNOCKDOWN_BONUS
+          : KNOCKBACK_HIT;
+      if (isStrong) knockback += KNOCKBACK_STRONG_BONUS;
+      defender.applyKnockback(attacker.facing * knockback);
+
       this.gameFeel.applyHitstop(isStrong ? 8 : 4);
       this.gameFeel.applyShake(isStrong ? 4 : 2, isStrong ? 8 : 4);
       this.gameFeel.spawnHitSpark(defender.x, defender.y - 20);

@@ -14,6 +14,7 @@ export class BattleHUD {
   private p2HpBar!: Phaser.GameObjects.Graphics;
   private heatBar!: Phaser.GameObjects.Graphics;
   private superBar!: Phaser.GameObjects.Graphics;
+  private guardBar!: Phaser.GameObjects.Graphics;
   private gearText!: Phaser.GameObjects.Text;
   private ratioText!: Phaser.GameObjects.Text;
   private timerText!: Phaser.GameObjects.Text;
@@ -39,6 +40,7 @@ export class BattleHUD {
     this.p2HpBar = this.scene.add.graphics();
     this.heatBar = this.scene.add.graphics();
     this.superBar = this.scene.add.graphics();
+    this.guardBar = this.scene.add.graphics();
     this.meshGlow = this.scene.add.graphics();
 
     this.gearText = this.scene.add.text(8, 24, '', { fontSize: '10px', color: '#fff', fontFamily: PIXEL_FONT });
@@ -48,7 +50,7 @@ export class BattleHUD {
     this.hintText = this.scene.add.text(GAME_WIDTH / 2, 56, '', { fontSize: '10px', color: '#88ff88', fontFamily: PIXEL_FONT, align: 'center', wordWrap: { width: 340 } }).setOrigin(0.5, 0);
 
     this.container.add([
-      this.p1HpBar, this.p2HpBar, this.heatBar, this.superBar, this.meshGlow,
+      this.p1HpBar, this.p2HpBar, this.heatBar, this.superBar, this.guardBar, this.meshGlow,
       this.gearText, this.ratioText, this.timerText, this.theoryText, this.hintText,
     ]);
   }
@@ -73,6 +75,13 @@ export class BattleHUD {
     this.superBar.fillRect(72, 49, 40, 4);
     this.superBar.fillStyle(0xffdd00);
     this.superBar.fillRect(72, 49, 40 * (p1.superGauge / 100), 4);
+
+    this.guardBar.clear();
+    const guardColor = p1.guardGauge < 30 ? 0xff5555 : 0x66ccff;
+    this.guardBar.fillStyle(0x333333);
+    this.guardBar.fillRect(116, 49, 32, 4);
+    this.guardBar.fillStyle(guardColor);
+    this.guardBar.fillRect(116, 49, 32 * (p1.guardGauge / 100), 4);
 
     const mins = Math.floor(timeLeft / 60);
     const secs = Math.floor(timeLeft % 60);
