@@ -144,6 +144,16 @@ export class AIController {
       return input;
     }
 
+    // Point-blank and the human is turtling: throw instead of feeding another
+    // strike into their guard. This is the actual answer to "just hold block" -
+    // gives blocking a real cost and rewards the player for recognizing it.
+    if (dist <= 26 && (opponent.state === 'block' || opponent.state === 'blockstun') && Math.random() < 0.3 + this.stage * 0.15) {
+      input.weak = true;
+      input.gearDown = true;
+      this.thinkTimer = 10;
+      return input;
+    }
+
     if (this.comboCount < 3) {
       // Weak pokes lead the string; the CPU only reaches for the slower,
       // riskier strong finisher some of the time, more often as it escalates.

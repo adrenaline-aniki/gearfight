@@ -63,6 +63,18 @@ export const SUPER_REACH = 36;
 export const SUPER_HEIGHT = 32;
 export const KNOCKBACK_SUPER_BONUS = 8;
 
+// Throw ("投げ"): a guard-BYPASSING option (see Fighter.isThrowable() /
+// BattleScene.checkHit()) so holding block forever isn't a free win. Very
+// short range, fixed damage set just above KNOCKDOWN_DAMAGE_THRESHOLD so a
+// connecting throw naturally knocks down through the normal takeDamage() path.
+export const THROW_STARTUP = 4;
+export const THROW_ACTIVE_FRAMES = 2;
+export const THROW_RECOVERY = 16;
+export const THROW_DAMAGE = 70;
+export const THROW_RANGE = 22;
+export const THROW_HEIGHT = 24;
+export const KNOCKBACK_THROW_BONUS = 6;
+
 export const AUDIO_URLS = {
   bgmTitle: '/music/next-gear.mp3',
   bgmBattle: '/music/next-gear-(instrumental-version).mp3',

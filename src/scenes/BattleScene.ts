@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import {
   GAME_HEIGHT, GAME_WIDTH, GROUND_Y, PIXEL_FONT,
-  KNOCKBACK_BLOCK, KNOCKBACK_HIT, KNOCKBACK_KNOCKDOWN_BONUS, KNOCKBACK_STRONG_BONUS, KNOCKBACK_SUPER_BONUS,
+  KNOCKBACK_BLOCK, KNOCKBACK_HIT, KNOCKBACK_KNOCKDOWN_BONUS, KNOCKBACK_STRONG_BONUS,
+  KNOCKBACK_SUPER_BONUS, KNOCKBACK_THROW_BONUS,
 } from '../config/constants';
 import { SUPER_MOVE_NAME, typeMatchupMultiplier } from '../config/parts';
 import { AIController } from '../ai/AIController';
@@ -192,20 +193,25 @@ export class BattleScene extends Phaser.Scene {
 
   private checkHit(attacker: Fighter, defender: Fighter) {
     if (!attacker.attackActive || !attacker.hitbox) return;
-    if (!defender.isVulnerable()) return;
+
+    const isThrow = attacker.state === 'throw';
+    if (isThrow ? !defender.isThrowable() : !defender.isVulnerable()) return;
 
     const body = new Phaser.Geom.Rectangle(defender.x - 14, defender.y - 40, 28, 40);
     if (!Phaser.Geom.Intersects.RectangleToRectangle(attacker.hitbox, body)) return;
 
     const isSuper = attacker.state === 'super';
-    const isGuarded = defender.state === 'block';
+    const wasGuarding = defender.state === 'block' || defender.state === 'blockstun';
+    // Throws bypass guard entirely - that's the whole point of adding them
+    // (holding block forever stops being a free win).
+    const isGuarded = !isThrow && defender.state === 'block';
     const isShiftHit = defender.isShifting();
     // Supers crush guard unconditionally instead of just chipping through it -
     // reuses the existing guard-break math in Fighter.takeDamage() by zeroing
     // the gauge right before the hit resolves.
     if (isSuper && isGuarded) defender.guardGauge = 0;
-    const matchup = typeMatchupMultiplier(attacker.getMechType(), defender.getMechType());
-    const rawDamage = isSuper ? attacker.getSuperDamage() : attacker.getAttackDamage();
+    const matchup = isThrow ? 1 : typeMatchupMultiplier(attacker.getMechType(), defender.getMechType());
+    const rawDamage = isThrow ? attacker.getThrowDamage() : isSuper ? attacker.getSuperDamage() : attacker.getAttackDamage();
     const dmg = defender.takeDamage(Math.round(rawDamage * matchup), isGuarded, isShiftHit);
 
     if (dmg > 0) {
@@ -221,16 +227,22 @@ export class BattleScene extends Phaser.Scene {
           : KNOCKBACK_HIT;
       if (isStrong) knockback += KNOCKBACK_STRONG_BONUS;
       if (isSuper) knockback += KNOCKBACK_SUPER_BONUS;
+      if (isThrow) knockback += KNOCKBACK_THROW_BONUS;
       defender.applyKnockback(attacker.facing * knockback);
 
-      this.gameFeel.applyHitstop(isSuper ? 14 : isStrong ? 8 : 4);
-      this.gameFeel.applyShake(isSuper ? 7 : isStrong ? 4 : 2, isSuper ? 16 : isStrong ? 8 : 4);
+      this.gameFeel.applyHitstop(isSuper ? 14 : isThrow ? 6 : isStrong ? 8 : 4);
+      this.gameFeel.applyShake(isSuper ? 7 : isThrow ? 3 : isStrong ? 4 : 2, isSuper ? 16 : isThrow ? 6 : isStrong ? 8 : 4);
       this.gameFeel.spawnHitSpark(defender.x, defender.y - 20);
-      spawnMechanismOverlay(this, attacker.x, attacker.y - 30, isStrong ? 'lever-crank' : 'slider-crank', attacker.facing);
-      this.audio.playSe(isGuarded ? 'guard' : isStrong ? 'hit_strong' : 'hit_weak');
+      spawnMechanismOverlay(
+        this, attacker.x, attacker.y - 30,
+        isThrow ? 'clamp' : isStrong ? 'lever-crank' : 'slider-crank',
+        attacker.facing,
+      );
+      this.audio.playSe(isThrow ? 'throw' : isGuarded ? 'guard' : isStrong ? 'hit_strong' : 'hit_weak');
 
       if (isShiftHit) this.addTheoryBonus('shift_gap', 'シフト中は無防備！');
       if (attacker.canGuardBreak() && isGuarded) this.addTheoryBonus('guard_break', 'GL4以上でガードブレイク！');
+      if (isThrow && wasGuarding) this.addTheoryBonus('throw_break', 'ガードは投げには無力！');
       if (defender.overheatTimer > 0) this.addTheoryBonus('overheat', 'オーバーヒート中の追撃！');
       if (matchup > 1) this.addTheoryBonus('type_advantage', 'タイプ相性で追加ダメージ！');
 

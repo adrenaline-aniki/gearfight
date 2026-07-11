@@ -28,6 +28,12 @@ import {
   SUPER_REACH,
   SUPER_RECOVERY,
   SUPER_STARTUP,
+  THROW_ACTIVE_FRAMES,
+  THROW_DAMAGE,
+  THROW_HEIGHT,
+  THROW_RANGE,
+  THROW_RECOVERY,
+  THROW_STARTUP,
   WALK_FRAME_INTERVAL,
   type GearLevel,
 } from '../config/constants';
@@ -125,6 +131,7 @@ export class Fighter {
       case 'attack_weak': return 'attack_weak';
       case 'attack_strong': return 'attack_strong';
       case 'super': return 'attack_strong';
+      case 'throw': return 'attack_weak';
       case 'block': return 'guard';
       case 'blockstun': return 'guard';
       case 'shift': return this.stateTimer <= 4 ? 'shift_complete' : 'shift_start';
@@ -182,7 +189,7 @@ export class Fighter {
   updateFacing(opponentX: number) {
     if (
       this.state === 'shift' || this.state === 'hitstun' || this.state === 'knockdown'
-      || this.state === 'blockstun' || this.state === 'super'
+      || this.state === 'blockstun' || this.state === 'super' || this.state === 'throw'
     ) return;
     this.facing = opponentX >= this.x ? 1 : -1;
   }
@@ -231,7 +238,7 @@ export class Fighter {
     if (
       this.state === 'hitstun' || this.state === 'knockdown' || this.state === 'dead'
       || this.state === 'blockstun' || this.state === 'attack_weak' || this.state === 'attack_strong'
-      || this.state === 'super'
+      || this.state === 'super' || this.state === 'throw'
     ) return;
 
     const blocking = (this.facing === 1 && input.left) || (this.facing === -1 && input.right);
@@ -249,6 +256,16 @@ export class Fighter {
       this.consumeBuffered('weak');
       this.consumeBuffered('strong');
       this.startSuper();
+      return;
+    }
+
+    // Throw ("投げ"): weak+gearDown together, at point-blank range only. Bypasses
+    // guard entirely (see BattleScene.checkHit()) - the answer to just holding
+    // block forever, framed as downshifting for a high-torque grip.
+    if (this.hasBuffered('weak') && this.hasBuffered('gearDown')) {
+      this.consumeBuffered('weak');
+      this.consumeBuffered('gearDown');
+      this.startThrow();
       return;
     }
 
@@ -316,6 +333,14 @@ export class Fighter {
     this.hitbox = null;
     this.superGauge = 0;
     this.superJustActivated = true;
+    this.redraw();
+  }
+
+  private startThrow() {
+    this.state = 'throw';
+    this.stateTimer = THROW_STARTUP + THROW_ACTIVE_FRAMES + THROW_RECOVERY;
+    this.attackActive = false;
+    this.hitbox = null;
     this.redraw();
   }
 
@@ -425,6 +450,34 @@ export class Fighter {
       return;
     }
 
+    if (this.state === 'throw') {
+      const total = THROW_STARTUP + THROW_ACTIVE_FRAMES + THROW_RECOVERY;
+      const elapsed = total - this.stateTimer;
+
+      if (elapsed === THROW_STARTUP) {
+        this.attackActive = true;
+        this.hitbox = new Phaser.Geom.Rectangle(
+          this.facing === 1 ? this.x + 6 : this.x - 6 - THROW_RANGE,
+          this.y - 30,
+          THROW_RANGE,
+          THROW_HEIGHT,
+        );
+      }
+      if (elapsed > THROW_STARTUP + THROW_ACTIVE_FRAMES) {
+        this.attackActive = false;
+        this.hitbox = null;
+      }
+
+      this.stateTimer -= 1;
+      if (this.stateTimer <= 0) {
+        this.state = 'idle';
+        this.attackActive = false;
+        this.hitbox = null;
+      }
+      this.redraw();
+      return;
+    }
+
     if (this.state === 'hitstun' || this.state === 'blockstun') {
       this.stateTimer -= 1;
       if (this.stateTimer <= 0) this.state = 'idle';
@@ -465,6 +518,16 @@ export class Fighter {
     return this.state === 'shift';
   }
 
+  // Throws land on anyone standing/walking/jumping/guarding, but not on
+  // someone already down, mid-attack, mid-shift, or still in another hit's
+  // invuln window - keeps throws from chaining into each other for free.
+  isThrowable(): boolean {
+    return this.invuln <= 0 && (
+      this.state === 'idle' || this.state === 'walk' || this.state === 'jump'
+      || this.state === 'block' || this.state === 'blockstun'
+    );
+  }
+
   getAttackDamage(): number {
     const gear = GEAR_TABLE[this.gear];
     const base = this.state === 'attack_strong' ? BASE_DAMAGE_STRONG : BASE_DAMAGE_WEAK;
@@ -486,6 +549,10 @@ export class Fighter {
   // Flat, not gear-scaled - see the constant's comment in config/constants.ts.
   getSuperDamage(): number {
     return SUPER_DAMAGE;
+  }
+
+  getThrowDamage(): number {
+    return THROW_DAMAGE;
   }
 
   // Speed/Power/Defense archetype for the type-matchup triangle (spec §3.5).

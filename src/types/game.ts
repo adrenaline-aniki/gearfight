@@ -16,6 +16,7 @@ export type FighterState =
   | 'blockstun'
   | 'shift'
   | 'super'
+  | 'throw'
   | 'hitstun'
   | 'knockdown'
   | 'dead';
