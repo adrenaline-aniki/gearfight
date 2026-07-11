@@ -151,7 +151,14 @@ export class DialogueScene extends Phaser.Scene {
 
     const charId = SPEAKER_CHARACTER[line.speaker];
     if (charId) {
-      this.speakerPortrait.setTexture(this.resolvePortraitKey(charId, line.emotion)).setVisible(true);
+      // setTexture() doesn't preserve a previous setDisplaySize() - it keeps
+      // the old scale factor, which was computed against a different-sized
+      // frame, so it must be reapplied every time the texture changes or the
+      // portrait balloons to whatever size that stale scale happens to produce
+      // on the new (much larger, native-resolution) portrait frame.
+      this.speakerPortrait.setTexture(this.resolvePortraitKey(charId, line.emotion))
+        .setDisplaySize(PORTRAIT_WIDTH, PORTRAIT_HEIGHT)
+        .setVisible(true);
       this.nameText.setX(TEXT_X);
       this.bodyText.setX(TEXT_X);
       this.bodyText.setWordWrapWidth(GAME_WIDTH - 14 - TEXT_X, true);
