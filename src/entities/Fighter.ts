@@ -328,12 +328,20 @@ export class Fighter {
 
   private startSuper() {
     this.state = 'super';
-    this.stateTimer = SUPER_STARTUP + SUPER_ACTIVE_FRAMES + SUPER_RECOVERY;
+    this.stateTimer = this.getSuperStartup() + SUPER_ACTIVE_FRAMES + SUPER_RECOVERY;
     this.attackActive = false;
     this.hitbox = null;
     this.superGauge = 0;
     this.superJustActivated = true;
     this.redraw();
+  }
+
+  // Type-flavored super variants (numbers, not just the callout name) - kept
+  // to one small trait per type so they stay easy to reason about:
+  // speed = quicker startup, power = harder-hitting, defense = a brief
+  // armored moment right as the active window closes, balanced = baseline.
+  private getSuperStartup(): number {
+    return this.getMechType() === 'speed' ? SUPER_STARTUP - 3 : SUPER_STARTUP;
   }
 
   private startThrow() {
@@ -423,10 +431,11 @@ export class Fighter {
     }
 
     if (this.state === 'super') {
-      const total = SUPER_STARTUP + SUPER_ACTIVE_FRAMES + SUPER_RECOVERY;
+      const startup = this.getSuperStartup();
+      const total = startup + SUPER_ACTIVE_FRAMES + SUPER_RECOVERY;
       const elapsed = total - this.stateTimer;
 
-      if (elapsed === SUPER_STARTUP) {
+      if (elapsed === startup) {
         this.attackActive = true;
         this.hitbox = new Phaser.Geom.Rectangle(
           this.facing === 1 ? this.x + 10 : this.x - 10 - SUPER_REACH,
@@ -435,7 +444,12 @@ export class Fighter {
           SUPER_HEIGHT,
         );
       }
-      if (elapsed > SUPER_STARTUP + SUPER_ACTIVE_FRAMES) {
+      if (elapsed === startup + SUPER_ACTIVE_FRAMES + 1 && this.getMechType() === 'defense') {
+        // Defense-type payoff: a brief armored moment right as the window
+        // closes, covering the start of an otherwise fully exposed recovery.
+        this.invuln = Math.max(this.invuln, 8);
+      }
+      if (elapsed > startup + SUPER_ACTIVE_FRAMES) {
         this.attackActive = false;
         this.hitbox = null;
       }
@@ -547,8 +561,10 @@ export class Fighter {
   }
 
   // Flat, not gear-scaled - see the constant's comment in config/constants.ts.
+  // Power type gets a modest bonus on top (see getSuperStartup() for the
+  // sibling speed/defense traits).
   getSuperDamage(): number {
-    return SUPER_DAMAGE;
+    return this.getMechType() === 'power' ? Math.round(SUPER_DAMAGE * 1.15) : SUPER_DAMAGE;
   }
 
   getThrowDamage(): number {

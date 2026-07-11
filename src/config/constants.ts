@@ -62,6 +62,7 @@ export const SUPER_DAMAGE = 260;
 export const SUPER_REACH = 36;
 export const SUPER_HEIGHT = 32;
 export const KNOCKBACK_SUPER_BONUS = 8;
+export const KNOCKBACK_SPEED_SUPER_BONUS = 6;
 
 // Throw ("投げ"): a guard-BYPASSING option (see Fighter.isThrowable() /
 // BattleScene.checkHit()) so holding block forever isn't a free win. Very

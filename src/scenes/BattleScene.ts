@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import {
   GAME_HEIGHT, GAME_WIDTH, GROUND_Y, PIXEL_FONT,
   KNOCKBACK_BLOCK, KNOCKBACK_HIT, KNOCKBACK_KNOCKDOWN_BONUS, KNOCKBACK_STRONG_BONUS,
-  KNOCKBACK_SUPER_BONUS, KNOCKBACK_THROW_BONUS,
+  KNOCKBACK_SUPER_BONUS, KNOCKBACK_SPEED_SUPER_BONUS, KNOCKBACK_THROW_BONUS,
 } from '../config/constants';
 import { SUPER_MOVE_NAME, typeMatchupMultiplier } from '../config/parts';
 import { AIController } from '../ai/AIController';
@@ -228,6 +228,10 @@ export class BattleScene extends Phaser.Scene {
       if (isStrong) knockback += KNOCKBACK_STRONG_BONUS;
       if (isSuper) knockback += KNOCKBACK_SUPER_BONUS;
       if (isThrow) knockback += KNOCKBACK_THROW_BONUS;
+      // Speed-type super trait (see Fighter.getSuperStartup() for the sibling
+      // power/defense traits): the payoff for its bare-bones damage is a
+      // rush-down shove instead of a bigger number.
+      if (isSuper && attacker.getMechType() === 'speed') knockback += KNOCKBACK_SPEED_SUPER_BONUS;
       defender.applyKnockback(attacker.facing * knockback);
 
       this.gameFeel.applyHitstop(isSuper ? 14 : isThrow ? 6 : isStrong ? 8 : 4);
