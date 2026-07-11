@@ -54,6 +54,8 @@ export interface BattleConfig {
   assistMode?: boolean;
   /** Played via DialogueScene after a clean player win, before returning to ModeSelectScene. */
   postWinDialogue?: DialogueLine[];
+  /** Tutorial only: show the Nogi-sensei HUD-overview intro on top of the battle screen right after create(). */
+  showTutorialIntro?: boolean;
 }
 
 export interface TheoryBonusEvent {

@@ -6,8 +6,18 @@ import type { DialogueLine } from '../types/game';
 
 interface DialogueSceneData {
   lines: DialogueLine[];
-  nextScene: string;
+  /** Omit when paired with resumeScene - resumes that scene instead of starting a new one. */
+  nextScene?: string;
   nextData?: Record<string, unknown>;
+  /**
+   * Skips the opaque cutscene chrome (full-screen fill, decorative circle/
+   * border) so a scene paused underneath (via scene.launch(), not started)
+   * stays visible - for mid-battle narration (tutorial HUD explanations)
+   * where the player needs to actually see what's being pointed at.
+   */
+  overlay?: boolean;
+  /** Overlay mode with no nextScene: resume this paused scene on finish. */
+  resumeScene?: string;
 }
 
 const SPEAKER_COLORS: Record<string, string> = {
@@ -38,10 +48,13 @@ const SPEAKER_CHARACTER: Record<string, string> = {
   'レイ': 'omeganova',
 };
 
-const PORTRAIT_X = 29;
-const PORTRAIT_WIDTH = 42;
-const PORTRAIT_HEIGHT = 32;
-const TEXT_X = 56;
+// Enlarged from the original 42x32 box/portrait - the portrait was too
+// small to make out faces clearly once it stopped ballooning past the box.
+const PORTRAIT_X = 34;
+const PORTRAIT_WIDTH = 52;
+const PORTRAIT_HEIGHT = 48;
+const TEXT_X = 68;
+const BOX_HEIGHT = 60;
 
 // Generic tap-to-advance dialogue player, reused for the story prologue and
 // future chapter-intro demos (spec §5.2 "章開始デモ"). Content lives in
@@ -49,8 +62,10 @@ const TEXT_X = 56;
 export class DialogueScene extends Phaser.Scene {
   private audio!: AudioManager;
   private lines: DialogueLine[] = [];
-  private nextScene = 'ModeSelectScene';
+  private nextScene?: string;
   private nextData?: Record<string, unknown>;
+  private overlay = false;
+  private resumeScene?: string;
   private index = 0;
 
   private nameText!: Phaser.GameObjects.Text;
@@ -68,6 +83,8 @@ export class DialogueScene extends Phaser.Scene {
     this.lines = data.lines;
     this.nextScene = data.nextScene;
     this.nextData = data.nextData;
+    this.overlay = data.overlay ?? false;
+    this.resumeScene = data.resumeScene;
     this.index = 0;
     this.finished = false;
   }
@@ -87,24 +104,33 @@ export class DialogueScene extends Phaser.Scene {
     this.audio = new AudioManager(this);
     this.audio.unlock();
 
-    const bg = this.add.graphics();
-    bg.fillStyle(0x1a1628);
-    bg.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-    bg.fillStyle(0x120e1c);
-    bg.fillRect(0, GAME_HEIGHT - 56, GAME_WIDTH, 56);
-    bg.fillStyle(0x4a4028, 0.35);
-    bg.fillCircle(GAME_WIDTH / 2, 26, 26);
-    bg.lineStyle(1, 0x3a3050);
-    bg.strokeRect(70, 36, GAME_WIDTH - 140, GAME_HEIGHT - 100);
+    // Overlay mode (launched on top of a paused scene, e.g. mid-battle
+    // tutorial narration) skips the opaque cutscene chrome entirely - the
+    // whole point is that the player can still see the paused game/HUD
+    // behind the dialogue box while Nogi-sensei describes it.
+    if (!this.overlay) {
+      const bg = this.add.graphics();
+      bg.fillStyle(0x1a1628);
+      bg.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+      bg.fillStyle(0x120e1c);
+      bg.fillRect(0, GAME_HEIGHT - 56, GAME_WIDTH, 56);
+      bg.fillStyle(0x4a4028, 0.35);
+      bg.fillCircle(GAME_WIDTH / 2, 26, 26);
+      bg.lineStyle(1, 0x3a3050);
+      bg.strokeRect(70, 36, GAME_WIDTH - 140, GAME_HEIGHT - 100);
+    }
 
+    // Created (but invisible) even in overlay mode - only the story-specific
+    // reveal-hajime/awaken-hajime effects use it, which overlay dialogues
+    // (tutorial narration) never do, but showLine() references it unconditionally.
     this.hajimePortrait = this.add.image(GAME_WIDTH / 2, 108, 'hajime_idle')
       .setOrigin(0.5, 1)
       .setScale(0.6)
       .setAlpha(0)
       .setTint(0x777766);
 
-    const boxY = GAME_HEIGHT - 46;
-    this.add.rectangle(GAME_WIDTH / 2, boxY, GAME_WIDTH - 12, 44, 0x0d0d1a, 0.92)
+    const boxY = GAME_HEIGHT - BOX_HEIGHT / 2 - 24;
+    this.add.rectangle(GAME_WIDTH / 2, boxY, GAME_WIDTH - 12, BOX_HEIGHT, 0x0d0d1a, 0.92)
       .setStrokeStyle(1, 0x4a4a6e);
 
     // Placeholder texture only - always loaded regardless of this dialogue's
@@ -113,17 +139,17 @@ export class DialogueScene extends Phaser.Scene {
       .setDisplaySize(PORTRAIT_WIDTH, PORTRAIT_HEIGHT)
       .setVisible(false);
 
-    this.nameText = this.add.text(TEXT_X, boxY - 20, '', {
+    this.nameText = this.add.text(TEXT_X, boxY - 26, '', {
       fontSize: '10px', color: '#ffdd44', fontFamily: PIXEL_FONT, fontStyle: 'bold',
     });
 
-    this.bodyText = this.add.text(TEXT_X, boxY - 7, '', {
+    this.bodyText = this.add.text(TEXT_X, boxY - 11, '', {
       fontSize: '10px', color: '#ffffff', fontFamily: PIXEL_FONT,
       wordWrap: { width: GAME_WIDTH - 14 - TEXT_X, useAdvancedWrap: true },
       lineSpacing: 4,
     });
 
-    this.promptText = this.add.text(GAME_WIDTH - 14, boxY + 15, '▼', {
+    this.promptText = this.add.text(GAME_WIDTH - 14, boxY + 23, '▼', {
       fontSize: '10px', color: '#aaaaaa', fontFamily: PIXEL_FONT,
     }).setOrigin(1, 0.5);
     this.tweens.add({ targets: this.promptText, alpha: 0.2, duration: 500, yoyo: true, repeat: -1 });
@@ -199,6 +225,16 @@ export class DialogueScene extends Phaser.Scene {
   private finish() {
     if (this.finished) return;
     this.finished = true;
-    this.scene.start(this.nextScene, this.nextData);
+    if (this.nextScene) {
+      this.scene.start(this.nextScene, this.nextData);
+    } else if (this.resumeScene) {
+      // Overlay mode with nothing new to transition to - hand control back
+      // to whatever scene was paused underneath (see BattleScene's tutorial
+      // intro, which just wants to continue the same fight, not restart it).
+      this.scene.stop();
+      this.scene.resume(this.resumeScene);
+    } else {
+      this.scene.start('ModeSelectScene');
+    }
   }
 }

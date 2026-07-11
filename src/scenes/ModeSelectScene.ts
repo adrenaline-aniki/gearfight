@@ -4,7 +4,6 @@ import { AudioManager } from '../systems/AudioManager';
 import { SaveManager } from '../systems/SaveManager';
 import { OPENING_DIALOGUE } from '../data/openingDialogue';
 import { FINAL_CHAPTER_INTRO, FINAL_CHAPTER_VICTORY } from '../data/finalChapterDialogue';
-import { TUTORIAL_INTRO } from '../data/tutorialDialogue';
 import type { BattleConfig } from '../types/game';
 
 export class ModeSelectScene extends Phaser.Scene {
@@ -36,8 +35,13 @@ export class ModeSelectScene extends Phaser.Scene {
       },
       { label: 'ガレージ（パーツ換装）', color: '#88ddff', action: () => this.scene.start('GarageScene') },
       {
+        // The Nogi-sensei HUD-overview intro is shown as an overlay on top
+        // of the battle screen itself (see BattleScene.create()) rather than
+        // via DialogueScene beforehand - it needs the real HUD visible
+        // behind it to point at, which a separate black-background scene
+        // can't show.
         label: 'チュートリアル（第0章）',
-        action: toBattleWithIntro(TUTORIAL_INTRO, { mode: 'tutorial', player1: 'hajime', player2: 'kakashi', roundTime: 90, roundsToWin: 1, tutorialStep: 1, assistMode: save.assistMode }),
+        action: toBattle({ mode: 'tutorial', player1: 'hajime', player2: 'kakashi', roundTime: 90, roundsToWin: 1, tutorialStep: 1, assistMode: save.assistMode, showTutorialIntro: true }),
       },
       { label: 'ストーリー（第1章 vs ソニカ）', action: toBattle({ mode: 'story', player1: 'hajime', player2: 'wizel', roundTime: 45, roundsToWin: 2, assistMode: save.assistMode }) },
       { label: 'ストーリー（第2章 vs ゴウケン）', action: toBattle({ mode: 'story', player1: 'hajime', player2: 'ganrock', roundTime: 45, roundsToWin: 2, assistMode: save.assistMode }) },

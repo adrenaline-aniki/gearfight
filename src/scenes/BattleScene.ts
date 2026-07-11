@@ -17,7 +17,7 @@ import { TouchControls } from '../ui/TouchControls';
 import { loadFighterSprites, setLoaderBase } from '../systems/AssetPaths';
 import { SPRITE_FIGHTERS } from '../config/constants';
 import {
-  TUTORIAL_STEP2_INTRO, TUTORIAL_STEP3_INTRO, TUTORIAL_STEP4_INTRO, TUTORIAL_OUTRO,
+  TUTORIAL_INTRO, TUTORIAL_STEP2_INTRO, TUTORIAL_STEP3_INTRO, TUTORIAL_STEP4_INTRO, TUTORIAL_OUTRO,
 } from '../data/tutorialDialogue';
 import type { BattleConfig, DialogueLine, TheoryBonusEvent, SpriteFighterId } from '../types/game';
 
@@ -124,6 +124,15 @@ export class BattleScene extends Phaser.Scene {
     this.touch = new TouchControls(this, this.inputMgr);
 
     this.showRoundAnnounce();
+
+    if (this.config.showTutorialIntro) {
+      this.scene.pause();
+      this.scene.launch('DialogueScene', { lines: TUTORIAL_INTRO, overlay: true, resumeScene: 'BattleScene' });
+      // Scenes render in their main.ts registration order regardless of
+      // launch order, and DialogueScene is registered before BattleScene -
+      // without this the paused battle would draw right over the overlay.
+      this.scene.bringToTop('DialogueScene');
+    }
   }
 
   private drawStage() {
@@ -323,17 +332,29 @@ export class BattleScene extends Phaser.Scene {
     }
   }
 
-  // Nogi-sensei narrates what's coming next via DialogueScene, then restarts
-  // this same BattleScene at the next tutorialStep (see init()/create()'s
-  // stage/gauge setup for that step) - a fresh Fighter pair each time, so hp
-  // resets for free instead of needing to do it here like the old in-place version.
+  // Nogi-sensei narrates what's coming next via DialogueScene overlaid on
+  // top of the (paused, but still visible) battle screen - these lines
+  // reference specific HUD elements (heat bar, guard gauge, etc.), which a
+  // separate black-background scene would hide right when they're relevant -
+  // then restarts this same BattleScene at the next tutorialStep (see
+  // init()/create()'s stage/gauge setup for that step): a fresh Fighter pair
+  // each time, so hp resets for free instead of needing to do it here like
+  // the old in-place version.
   private advanceTutorial(step: number, introLines: DialogueLine[]) {
     this.roundOver = true;
-    this.scene.start('DialogueScene', {
+    this.scene.pause();
+    this.scene.launch('DialogueScene', {
       lines: introLines,
+      overlay: true,
       nextScene: 'BattleScene',
-      nextData: { ...this.config, tutorialStep: step },
+      // showTutorialIntro must not carry forward - this.config still has it
+      // set from this same scene's own launch, and nextData otherwise spreads
+      // it straight into the next step's config, re-triggering the step-1 intro.
+      nextData: { ...this.config, tutorialStep: step, showTutorialIntro: false },
     });
+    // See the identical bringToTop() note above create() - registration
+    // order, not launch order, decides render order.
+    this.scene.bringToTop('DialogueScene');
   }
 
   private completeTutorial() {
