@@ -102,12 +102,14 @@ export const ALL_SPRITE_FIGHTERS = [...SPRITE_FIGHTERS, ...PROCEDURAL_FIGHTERS] 
 // Fighters with an extracted multi-frame walk cycle (public/sprites/<id>/walk_<n>.png,
 // n = 0..count-1). Everyone else falls back to a single static `<id>_walk` texture
 // (`walk.png` on disk, or the procedural SpriteFactory texture for kakashi).
+// hajime/wizel/aegis/drift used to be in here too, but their "second" extracted
+// pose was consistently a near-duplicate lunge/jump variant rather than a
+// genuinely different opposite-leg stride, so ping-ponging between them read as
+// a half-hearted alternation ("moonwalk") - worse than just holding the one good
+// stride pose (see syncPosition()'s bob+sway, which now carries the motion for
+// them instead). Ganrock's two frames are a real alternating pair and stay.
 export const SPRITE_WALK_FRAME_COUNT: Partial<Record<(typeof ALL_SPRITE_FIGHTERS)[number], number>> = {
-  hajime: 3,
-  wizel: 2,
   ganrock: 2,
-  aegis: 2,
-  drift: 2,
 };
 export const WALK_FRAME_INTERVAL = 6; // game ticks per walk-cycle frame (60fps / 6 = 10fps)
 
