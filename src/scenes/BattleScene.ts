@@ -1,9 +1,9 @@
 import Phaser from 'phaser';
 import {
   GAME_HEIGHT, GAME_WIDTH, GROUND_Y, PIXEL_FONT,
-  KNOCKBACK_BLOCK, KNOCKBACK_HIT, KNOCKBACK_KNOCKDOWN_BONUS, KNOCKBACK_STRONG_BONUS,
+  KNOCKBACK_BLOCK, KNOCKBACK_HIT, KNOCKBACK_KNOCKDOWN_BONUS, KNOCKBACK_STRONG_BONUS, KNOCKBACK_SUPER_BONUS,
 } from '../config/constants';
-import { typeMatchupMultiplier } from '../config/parts';
+import { SUPER_MOVE_NAME, typeMatchupMultiplier } from '../config/parts';
 import { AIController } from '../ai/AIController';
 import { Fighter } from '../entities/Fighter';
 import { AudioManager } from '../systems/AudioManager';
@@ -151,6 +151,8 @@ export class BattleScene extends Phaser.Scene {
 
     this.p1.tickState();
     this.p2.tickState();
+    if (this.p1.superJustActivated) { this.p1.superJustActivated = false; this.onSuperActivated(this.p1); }
+    if (this.p2.superJustActivated) { this.p2.superJustActivated = false; this.onSuperActivated(this.p2); }
     this.p1.applyPhysics();
     this.p2.applyPhysics();
     this.p1.redraw();
@@ -182,6 +184,12 @@ export class BattleScene extends Phaser.Scene {
     this.checkHit(this.p2, this.p1);
   }
 
+  private onSuperActivated(fighter: Fighter) {
+    this.hud.showSuperPopup(SUPER_MOVE_NAME[fighter.getMechType()]);
+    this.audio.playSe('super');
+    this.cameras.main.flash(150, 255, 220, 100);
+  }
+
   private checkHit(attacker: Fighter, defender: Fighter) {
     if (!attacker.attackActive || !attacker.hitbox) return;
     if (!defender.isVulnerable()) return;
@@ -189,16 +197,22 @@ export class BattleScene extends Phaser.Scene {
     const body = new Phaser.Geom.Rectangle(defender.x - 14, defender.y - 40, 28, 40);
     if (!Phaser.Geom.Intersects.RectangleToRectangle(attacker.hitbox, body)) return;
 
+    const isSuper = attacker.state === 'super';
     const isGuarded = defender.state === 'block';
     const isShiftHit = defender.isShifting();
+    // Supers crush guard unconditionally instead of just chipping through it -
+    // reuses the existing guard-break math in Fighter.takeDamage() by zeroing
+    // the gauge right before the hit resolves.
+    if (isSuper && isGuarded) defender.guardGauge = 0;
     const matchup = typeMatchupMultiplier(attacker.getMechType(), defender.getMechType());
-    const dmg = defender.takeDamage(Math.round(attacker.getAttackDamage() * matchup), isGuarded, isShiftHit);
+    const rawDamage = isSuper ? attacker.getSuperDamage() : attacker.getAttackDamage();
+    const dmg = defender.takeDamage(Math.round(rawDamage * matchup), isGuarded, isShiftHit);
 
     if (dmg > 0) {
       attacker.onHitLanded();
       defender.onDamageTaken(dmg);
 
-      const isStrong = attacker.state === 'attack_strong';
+      const isStrong = attacker.state === 'attack_strong' || isSuper;
 
       let knockback = defender.state === 'blockstun'
         ? KNOCKBACK_BLOCK
@@ -206,10 +220,11 @@ export class BattleScene extends Phaser.Scene {
           ? KNOCKBACK_HIT + KNOCKBACK_KNOCKDOWN_BONUS
           : KNOCKBACK_HIT;
       if (isStrong) knockback += KNOCKBACK_STRONG_BONUS;
+      if (isSuper) knockback += KNOCKBACK_SUPER_BONUS;
       defender.applyKnockback(attacker.facing * knockback);
 
-      this.gameFeel.applyHitstop(isStrong ? 8 : 4);
-      this.gameFeel.applyShake(isStrong ? 4 : 2, isStrong ? 8 : 4);
+      this.gameFeel.applyHitstop(isSuper ? 14 : isStrong ? 8 : 4);
+      this.gameFeel.applyShake(isSuper ? 7 : isStrong ? 4 : 2, isSuper ? 16 : isStrong ? 8 : 4);
       this.gameFeel.spawnHitSpark(defender.x, defender.y - 20);
       spawnMechanismOverlay(this, attacker.x, attacker.y - 30, isStrong ? 'lever-crank' : 'slider-crank', attacker.facing);
       this.audio.playSe(isGuarded ? 'guard' : isStrong ? 'hit_strong' : 'hit_weak');

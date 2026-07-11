@@ -22,6 +22,12 @@ import {
   SPRITE_TARGET_HEIGHT,
   SPRITE_WALK_FRAME_COUNT,
   STRONG_ATTACK_EXTRA_FRAMES,
+  SUPER_ACTIVE_FRAMES,
+  SUPER_DAMAGE,
+  SUPER_HEIGHT,
+  SUPER_REACH,
+  SUPER_RECOVERY,
+  SUPER_STARTUP,
   WALK_FRAME_INTERVAL,
   type GearLevel,
 } from '../config/constants';
@@ -75,6 +81,10 @@ export class Fighter {
   inputBuffer: { type: string; frames: number }[] = [];
   coyoteTimer = 0;
 
+  // One-shot flag: BattleScene reads and clears this the frame a super
+  // activates, to fire the callout popup/flash/SE exactly once per use.
+  superJustActivated = false;
+
   isPlayer = false;
   isAI = false;
   private loadout?: PartLoadout;
@@ -114,6 +124,7 @@ export class Fighter {
       case 'jump': return 'jump';
       case 'attack_weak': return 'attack_weak';
       case 'attack_strong': return 'attack_strong';
+      case 'super': return 'attack_strong';
       case 'block': return 'guard';
       case 'blockstun': return 'guard';
       case 'shift': return this.stateTimer <= 4 ? 'shift_complete' : 'shift_start';
@@ -157,7 +168,9 @@ export class Fighter {
       this.currentPose = textureKey;
     }
 
-    if (this.overheatTimer > 0) {
+    if (this.state === 'super') {
+      sprite.setTint(0xffee44);
+    } else if (this.overheatTimer > 0) {
       sprite.setTint(0xff8888);
     } else if (this.perfectShiftBonus) {
       sprite.setTint(0xffff88);
@@ -167,7 +180,10 @@ export class Fighter {
   }
 
   updateFacing(opponentX: number) {
-    if (this.state === 'shift' || this.state === 'hitstun' || this.state === 'knockdown' || this.state === 'blockstun') return;
+    if (
+      this.state === 'shift' || this.state === 'hitstun' || this.state === 'knockdown'
+      || this.state === 'blockstun' || this.state === 'super'
+    ) return;
     this.facing = opponentX >= this.x ? 1 : -1;
   }
 
@@ -186,6 +202,10 @@ export class Fighter {
       return true;
     }
     return false;
+  }
+
+  private hasBuffered(type: string): boolean {
+    return this.inputBuffer.some((b) => b.type === type && b.frames > 0);
   }
 
   tickBuffer() {
@@ -211,6 +231,7 @@ export class Fighter {
     if (
       this.state === 'hitstun' || this.state === 'knockdown' || this.state === 'dead'
       || this.state === 'blockstun' || this.state === 'attack_weak' || this.state === 'attack_strong'
+      || this.state === 'super'
     ) return;
 
     const blocking = (this.facing === 1 && input.left) || (this.facing === -1 && input.right);
@@ -218,6 +239,16 @@ export class Fighter {
       this.state = 'block';
       this.hitbox = null;
       this.redraw();
+      return;
+    }
+
+    // Super ("necessary"): both attack buttons within the input-buffer window,
+    // spent only once the gauge is full. Checked ahead of the single-button
+    // branches below so a near-simultaneous press reads as the super, not a jab.
+    if (this.superGauge >= 100 && this.hasBuffered('weak') && this.hasBuffered('strong')) {
+      this.consumeBuffered('weak');
+      this.consumeBuffered('strong');
+      this.startSuper();
       return;
     }
 
@@ -275,6 +306,16 @@ export class Fighter {
     this.stateTimer = type === 'attack_weak' ? gear.startup + gear.recovery : gear.startup + gear.recovery + STRONG_ATTACK_EXTRA_FRAMES;
     this.attackActive = false;
     this.hitbox = null;
+    this.redraw();
+  }
+
+  private startSuper() {
+    this.state = 'super';
+    this.stateTimer = SUPER_STARTUP + SUPER_ACTIVE_FRAMES + SUPER_RECOVERY;
+    this.attackActive = false;
+    this.hitbox = null;
+    this.superGauge = 0;
+    this.superJustActivated = true;
     this.redraw();
   }
 
@@ -356,6 +397,34 @@ export class Fighter {
       return;
     }
 
+    if (this.state === 'super') {
+      const total = SUPER_STARTUP + SUPER_ACTIVE_FRAMES + SUPER_RECOVERY;
+      const elapsed = total - this.stateTimer;
+
+      if (elapsed === SUPER_STARTUP) {
+        this.attackActive = true;
+        this.hitbox = new Phaser.Geom.Rectangle(
+          this.facing === 1 ? this.x + 10 : this.x - 10 - SUPER_REACH,
+          this.y - 34,
+          SUPER_REACH,
+          SUPER_HEIGHT,
+        );
+      }
+      if (elapsed > SUPER_STARTUP + SUPER_ACTIVE_FRAMES) {
+        this.attackActive = false;
+        this.hitbox = null;
+      }
+
+      this.stateTimer -= 1;
+      if (this.stateTimer <= 0) {
+        this.state = 'idle';
+        this.attackActive = false;
+        this.hitbox = null;
+      }
+      this.redraw();
+      return;
+    }
+
     if (this.state === 'hitstun' || this.state === 'blockstun') {
       this.stateTimer -= 1;
       if (this.stateTimer <= 0) this.state = 'idle';
@@ -414,6 +483,11 @@ export class Fighter {
     return Math.round(dmg);
   }
 
+  // Flat, not gear-scaled - see the constant's comment in config/constants.ts.
+  getSuperDamage(): number {
+    return SUPER_DAMAGE;
+  }
+
   // Speed/Power/Defense archetype for the type-matchup triangle (spec §3.5).
   // The protagonist's type comes from whichever arms are equipped; everyone
   // else's is fixed to their established character concept.
@@ -424,7 +498,7 @@ export class Fighter {
   }
 
   canGuardBreak(): boolean {
-    return GEAR_TABLE[this.gear].guardBreak && this.state === 'attack_strong';
+    return this.state === 'super' || (GEAR_TABLE[this.gear].guardBreak && this.state === 'attack_strong');
   }
 
   takeDamage(amount: number, isGuarded: boolean, isShiftHit: boolean): number {

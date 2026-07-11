@@ -73,7 +73,11 @@ export class BattleHUD {
     this.superBar.clear();
     this.superBar.fillStyle(0x333333);
     this.superBar.fillRect(72, 49, 40, 4);
-    this.superBar.fillStyle(0xffdd00);
+    const superReady = p1.superGauge >= 100;
+    const superColor = superReady
+      ? (Math.sin(this.scene.time.now / 120) > 0 ? 0xffffaa : 0xffdd00)
+      : 0xffdd00;
+    this.superBar.fillStyle(superColor);
     this.superBar.fillRect(72, 49, 40 * (p1.superGauge / 100), 4);
 
     this.guardBar.clear();
@@ -112,6 +116,25 @@ export class BattleHUD {
       alpha: 0,
       duration: 1500,
       onComplete: () => popup.destroy(),
+    });
+  }
+
+  // Announces a super the instant it activates (not when/if it connects) -
+  // a callout like SF2's flash, independent of the one-per-match THEORY BONUS popup.
+  showSuperPopup(name: string) {
+    const popup = this.scene.add.text(GAME_WIDTH / 2, 70, `${name}!!`, {
+      fontSize: '20px',
+      color: '#ffee66',
+      fontFamily: PIXEL_FONT,
+      fontStyle: 'bold',
+      align: 'center',
+      backgroundColor: '#000000aa',
+      padding: { x: 8, y: 5 },
+    }).setOrigin(0.5).setDepth(210).setScale(0.4);
+
+    this.scene.tweens.add({ targets: popup, scale: 1, duration: 180, ease: 'Back.Out' });
+    this.scene.tweens.add({
+      targets: popup, alpha: 0, delay: 700, duration: 400, onComplete: () => popup.destroy(),
     });
   }
 

@@ -37,7 +37,7 @@ export class AudioManager {
     this.bgm = undefined;
   }
 
-  playSe(type: 'hit_weak' | 'hit_strong' | 'guard' | 'shift' | 'perfect' | 'ko' | 'select') {
+  playSe(type: 'hit_weak' | 'hit_strong' | 'guard' | 'shift' | 'perfect' | 'ko' | 'select' | 'super') {
     const ctx = this.webAudio()?.context;
     if (!ctx || !this.unlocked) return;
 
@@ -54,6 +54,7 @@ export class AudioManager {
       perfect: { freq: 880, dur: 0.15, type: 'sine' },
       ko: { freq: 60, dur: 0.4, type: 'sawtooth' },
       select: { freq: 520, dur: 0.06, type: 'sine' },
+      super: { freq: 440, dur: 0.3, type: 'square' },
     };
     const p = presets[type];
     osc.type = p.type;

@@ -104,19 +104,53 @@ export class AIController {
       return input;
     }
 
-    fighter.gear = dist > 80 ? 1 : 2;
+    // Cash in the super the moment it's ready and the opponent is in range -
+    // both attack buttons at once, same as the human input (see Fighter.processInput).
+    if (fighter.superGauge >= 100 && dist <= 70) {
+      input.weak = true;
+      input.strong = true;
+      this.thinkTimer = 24;
+      return input;
+    }
+
+    // Manage heat like a real player would: back off a gear before overheating
+    // instead of grinding at GL4-5 forever.
+    if (fighter.heat > 70 && fighter.gear > 2) {
+      input.gearDown = true;
+      this.thinkTimer = 4;
+      return input;
+    }
+
+    // Occasionally commit to a higher gear at a safe distance for a heavier
+    // punish. This goes through the real shift minigame (input.gearUp), not a
+    // direct gear assignment, so the CPU is briefly vulnerable mid-shift just
+    // like a player. The cap rises with the escalation stage, so the CPU only
+    // reaches for GL4-5 (and the heat/guard-break risk that comes with them)
+    // once it's already fighting back from a deficit.
+    const gearCap = 3 + this.stage;
+    if (dist > 90 && fighter.gear < gearCap && Math.random() < 0.02 + this.stage * 0.015) {
+      input.gearUp = true;
+      this.thinkTimer = 4;
+      return input;
+    }
 
     if (dist > 60) {
       input.right = fighter.x < opponent.x;
       input.left = fighter.x > opponent.x;
+      // Rare jump-in for movement variety - purely cosmetic, no dedicated
+      // anti-air/overhead mechanic exists to make this a real mixup (yet).
+      if (dist < 150 && Math.random() < 0.03) input.jump = true;
       this.thinkTimer = 4;
       return input;
     }
 
     if (this.comboCount < 3) {
-      input.weak = true;
+      // Weak pokes lead the string; the CPU only reaches for the slower,
+      // riskier strong finisher some of the time, more often as it escalates.
+      const goStrong = this.comboCount === 2 && Math.random() < 0.2 + this.stage * 0.15;
+      if (goStrong) input.strong = true; else input.weak = true;
       this.comboCount += 1;
-      this.thinkTimer = 8;
+      this.thinkTimer = goStrong ? 10 : 8;
       if (this.comboCount >= 3) {
         this.gapTimer = 12;
         this.comboCount = 0;

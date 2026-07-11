@@ -97,6 +97,15 @@ export function typeMatchupMultiplier(attacker: MechType, defender: MechType): n
   return 1;
 }
 
+// Flavor name shown on the super-move callout - numbers are identical across
+// types (kept flat/simple, see BattleScene.checkHit()), only the name changes.
+export const SUPER_MOVE_NAME: Record<MechType, string> = {
+  speed: 'オーバーシフトダッシュ',
+  power: 'トルクブレイカー',
+  defense: 'リジッドカウンター',
+  balanced: 'ギアマックス',
+};
+
 // Story-cast mechs read their type from their established character concept
 // (settei sheet chapter themes) rather than an equippable loadout - only the
 // protagonist customizes parts per spec §3.5's "ロックマン方式" acquisition.

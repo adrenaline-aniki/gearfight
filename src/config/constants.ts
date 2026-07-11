@@ -51,6 +51,18 @@ export const KNOCKBACK_KNOCKDOWN_BONUS = 4;
 // single big guard-crush doesn't leave a fighter permanently guard-broken.
 export const GUARD_REGEN_PER_SEC = 20;
 
+// Super move ("necessary"): spends a full superGauge (see Fighter.onHitLanded
+// etc.) on one flat-damage, unconditional-guard-break hit. Deliberately not
+// scaled by GEAR_TABLE.damageMul - gear5 already hits hard on its own, and a
+// gear-scaled super on top of that would spike far past a fair one-shot.
+export const SUPER_STARTUP = 10;
+export const SUPER_ACTIVE_FRAMES = 6;
+export const SUPER_RECOVERY = 26;
+export const SUPER_DAMAGE = 260;
+export const SUPER_REACH = 36;
+export const SUPER_HEIGHT = 32;
+export const KNOCKBACK_SUPER_BONUS = 8;
+
 export const AUDIO_URLS = {
   bgmTitle: '/music/next-gear.mp3',
   bgmBattle: '/music/next-gear-(instrumental-version).mp3',
