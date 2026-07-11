@@ -35,7 +35,7 @@ export class GarageScene extends Phaser.Scene {
   private spdBar!: Phaser.GameObjects.Graphics;
   private hpValueText!: Phaser.GameObjects.Text;
   private spdValueText!: Phaser.GameObjects.Text;
-  private gearHintText!: Phaser.GameObjects.Text;
+  private descriptionText!: Phaser.GameObjects.Text;
 
   constructor() {
     super('GarageScene');
@@ -51,12 +51,12 @@ export class GarageScene extends Phaser.Scene {
       fontSize: '20px', color: '#fff', fontFamily: PIXEL_FONT, fontStyle: 'bold',
     }).setOrigin(0.5);
 
-    this.buildSlotRow(34, '頭', 'head', HEAD_IDS, (id) => HEAD_PARTS[id as HeadPartId].name);
-    this.buildSlotRow(56, '右腕', 'armRight', ARM_IDS, (id) => ARM_PARTS[id as ArmPartId].name);
-    this.buildSlotRow(78, '左腕', 'armLeft', ARM_IDS, (id) => ARM_PARTS[id as ArmPartId].name);
-    this.buildSlotRow(100, '脚', 'legs', LEG_IDS, (id) => LEG_PARTS[id as LegPartId].name);
+    this.buildSlotRow(34, '頭', 'head', HEAD_IDS, (id) => HEAD_PARTS[id as HeadPartId].name, (id) => HEAD_PARTS[id as HeadPartId].description);
+    this.buildSlotRow(56, '右腕', 'armRight', ARM_IDS, (id) => ARM_PARTS[id as ArmPartId].name, (id) => ARM_PARTS[id as ArmPartId].description);
+    this.buildSlotRow(78, '左腕', 'armLeft', ARM_IDS, (id) => ARM_PARTS[id as ArmPartId].name, (id) => ARM_PARTS[id as ArmPartId].description);
+    this.buildSlotRow(100, '脚', 'legs', LEG_IDS, (id) => LEG_PARTS[id as LegPartId].name, (id) => LEG_PARTS[id as LegPartId].description);
 
-    this.add.rectangle(GAME_WIDTH / 2, 155, GAME_WIDTH - 16, 86, 0x0d0d1a, 0.9).setStrokeStyle(1, 0x4a4a6e);
+    this.add.rectangle(GAME_WIDTH / 2, 157, GAME_WIDTH - 16, 90, 0x0d0d1a, 0.9).setStrokeStyle(1, 0x4a4a6e);
 
     // Fighter preview, tinted by current type - a menu-only affordance, the
     // actual battle sprite never changes (see CLAUDE.md for why).
@@ -94,20 +94,26 @@ export class GarageScene extends Phaser.Scene {
     this.spdBar = this.add.graphics();
     this.spdValueText = this.add.text(374, 140, '', { fontSize: '10px', color: '#fff', fontFamily: PIXEL_FONT }).setOrigin(1, 0.5);
 
-    this.gearHintText = this.add.text(268, 175, '', {
-      fontSize: '10px', color: '#88ff88', fontFamily: PIXEL_FONT, wordWrap: { width: 106 }, lineSpacing: 3,
+    // Part description: dynamic, shows whichever part was most recently
+    // cycled (see buildSlotRow's cycle()) so pros/cons are visible right
+    // after you change something, full-width so longer text still fits in 2 lines.
+    this.descriptionText = this.add.text(90, 176, '', {
+      fontSize: '10px', color: '#88ff88', fontFamily: PIXEL_FONT,
+      wordWrap: { width: 278, useAdvancedWrap: true }, lineSpacing: 2,
     });
 
     this.updatePreview();
+    this.descriptionText.setText(ARM_PARTS[this.loadout.armRight].description);
 
-    const back = this.add.text(8, GAME_HEIGHT - 14, '← モード選択', {
+    const back = this.add.text(8, GAME_HEIGHT - 10, '← モード選択', {
       fontSize: '10px', color: '#aaa', fontFamily: PIXEL_FONT,
     }).setInteractive({ useHandCursor: true });
     back.on('pointerdown', () => this.scene.start('ModeSelectScene'));
   }
 
   private buildSlotRow<K extends keyof PartLoadout>(
-    y: number, label: string, slot: K, ids: PartLoadout[K][], nameFor: (id: PartLoadout[K]) => string,
+    y: number, label: string, slot: K, ids: PartLoadout[K][],
+    nameFor: (id: PartLoadout[K]) => string, descriptionFor: (id: PartLoadout[K]) => string,
   ) {
     this.add.text(14, y, label, { fontSize: '10px', color: '#aaaacc', fontFamily: PIXEL_FONT }).setOrigin(0, 0.5);
 
@@ -130,9 +136,16 @@ export class GarageScene extends Phaser.Scene {
       const dot = this.typeDots[slot as 'armRight' | 'armLeft'];
       if (dot) dot.setPosition(nameText.x + nameText.width / 2 + 12, y).setFillStyle(TYPE_COLOR[ARM_PARTS[next as ArmPartId].type]);
       this.updatePreview();
+      this.descriptionText.setText(descriptionFor(next));
       SaveManager.save({ loadout: this.loadout });
       this.audio.playSe('select');
     };
+
+    // Tapping the part's name itself (not just the arrows) also surfaces its
+    // description - lets you check pros/cons of the currently-equipped part
+    // without needing to cycle away from it first.
+    nameText.setInteractive({ useHandCursor: true });
+    nameText.on('pointerdown', () => this.descriptionText.setText(descriptionFor(this.loadout[slot])));
 
     const prev = this.add.text(76, y, '◀', { fontSize: '10px', color: '#88ddff', fontFamily: PIXEL_FONT })
       .setOrigin(0.5).setInteractive({ useHandCursor: true });
@@ -147,8 +160,6 @@ export class GarageScene extends Phaser.Scene {
     const type = resolveMechType(this.loadout.armRight, this.loadout.armLeft);
     const head = HEAD_PARTS[this.loadout.head];
     const legs = LEG_PARTS[this.loadout.legs];
-    const armR = ARM_PARTS[this.loadout.armRight];
-    const armL = ARM_PARTS[this.loadout.armLeft];
     const maxHp = 1000 + head.hpBonus;
 
     const tintByType: Record<MechType, number> = { ...TYPE_COLOR, balanced: 0xcccccc };
@@ -165,8 +176,6 @@ export class GarageScene extends Phaser.Scene {
     this.hpValueText.setText(`${maxHp}`);
     this.drawBar(this.spdBar, 272, 146, 102, 6, (legs.speedMul - MIN_SPEED_MUL) / (MAX_SPEED_MUL - MIN_SPEED_MUL), 0x66ccff);
     this.spdValueText.setText(`×${legs.speedMul}`);
-
-    this.gearHintText.setText(`右腕(弱)得意GL${armR.favoredGear.join('-')} / 左腕(強)得意GL${armL.favoredGear.join('-')}`);
   }
 
   private drawBar(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, frac: number, color: number) {

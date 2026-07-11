@@ -172,6 +172,8 @@ export class BattleScene extends Phaser.Scene {
     if (this.roundTimer <= 0) this.endRound('timeup');
 
     this.hud.update(this.p1, this.p2, this.roundTimer, this.theoryCount, this.getHint());
+    this.touch?.updateGear('p1', this.p1.gear);
+    if (this.config.mode === 'classroom') this.touch?.updateGear('p2', this.p2.gear);
     this.syncVisuals();
 
     if (this.p1.hp <= 0) this.endRound('p2');

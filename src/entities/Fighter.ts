@@ -58,6 +58,10 @@ export class Fighter {
   private walkFrameIndex = 0;
   private walkFrameTimer = 0;
   private walkFrameDir: 1 | -1 = 1;
+  // Drives a small vertical bob while walking - independent of walkFrameTimer
+  // so single-frame walkers (no extracted walk cycle) still get a bounce
+  // instead of sliding flat across the ground like a static cutout.
+  private walkBobTimer = 0;
 
   x: number;
   y: number;
@@ -162,11 +166,13 @@ export class Fighter {
 
     let textureKey: string;
     if (pose === 'walk') {
+      this.walkBobTimer += 1;
       textureKey = this.nextWalkFrameTexture();
     } else {
       this.walkFrameIndex = 0;
       this.walkFrameTimer = 0;
       this.walkFrameDir = 1;
+      this.walkBobTimer = 0;
       textureKey = `${this.id}_${pose}`;
     }
 
@@ -657,7 +663,15 @@ export class Fighter {
   }
 
   syncPosition() {
-    this.container.setPosition(this.x, this.y);
+    // Small vertical bob while walking, one full up-down cycle per full
+    // walk-frame ping-pong (frame0->frame1->frame0) - a static side-view
+    // cutout sliding across flat ground doesn't read as walking at all,
+    // even with leg-pose swaps; a bounce is what actually sells the gait.
+    const bobCycle = WALK_FRAME_INTERVAL * 2;
+    const bob = this.state === 'walk'
+      ? Math.sin((this.walkBobTimer % bobCycle) / bobCycle * Math.PI * 2) * 1.5
+      : 0;
+    this.container.setPosition(this.x, this.y + bob);
     this.container.setScale(this.facing, 1);
   }
 

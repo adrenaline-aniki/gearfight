@@ -13,10 +13,10 @@ export const EMPTY_INPUT: PlayerInput = {
   jump: false,
 };
 
-type HoldField = 'left' | 'right' | 'up' | 'down' | 'jump';
-type PulseField = 'weak' | 'strong' | 'gearUp' | 'gearDown';
-const EMPTY_HOLD: Record<HoldField, boolean> = { left: false, right: false, up: false, down: false, jump: false };
-const EMPTY_PULSE: Record<PulseField, boolean> = { weak: false, strong: false, gearUp: false, gearDown: false };
+type HoldField = 'left' | 'right' | 'up' | 'down';
+type PulseField = 'weak' | 'strong' | 'gearUp' | 'gearDown' | 'jump';
+const EMPTY_HOLD: Record<HoldField, boolean> = { left: false, right: false, up: false, down: false };
+const EMPTY_PULSE: Record<PulseField, boolean> = { weak: false, strong: false, gearUp: false, gearDown: false, jump: false };
 
 export class InputManager {
   private p1 = { ...EMPTY_INPUT };
@@ -28,9 +28,9 @@ export class InputManager {
   // TouchControls wrote straight into p1/p2 via setP1/setP2, but update()
   // unconditionally rebuilt those from keyboard state every single frame
   // regardless, so any touch input was discarded before Fighter ever read it.
-  // Holds (movement/jump) persist while the control is active; pulses
-  // (attack/gear buttons) fire for exactly one update() call, matching the
-  // keyboard's JustDown so a held finger can't spam repeated inputs.
+  // Holds (movement) persist while the control is active; pulses (attack/gear/
+  // jump buttons) fire for exactly one update() call, matching the keyboard's
+  // JustDown so a held finger can't spam repeated inputs.
   private touchHoldP1: Record<HoldField, boolean> = { ...EMPTY_HOLD };
   private touchHoldP2: Record<HoldField, boolean> = { ...EMPTY_HOLD };
   private touchPulseP1: Record<PulseField, boolean> = { ...EMPTY_PULSE };
@@ -72,7 +72,7 @@ export class InputManager {
       strong: Phaser.Input.Keyboard.JustDown(this.keys.p1Strong) || this.consumePulse(this.touchPulseP1, 'strong'),
       gearUp: Phaser.Input.Keyboard.JustDown(this.keys.p1GearUp) || this.consumePulse(this.touchPulseP1, 'gearUp'),
       gearDown: Phaser.Input.Keyboard.JustDown(this.keys.p1GearDown) || this.consumePulse(this.touchPulseP1, 'gearDown'),
-      jump: Phaser.Input.Keyboard.JustDown(this.keys.p1Jump) || this.touchHoldP1.jump,
+      jump: Phaser.Input.Keyboard.JustDown(this.keys.p1Jump) || this.consumePulse(this.touchPulseP1, 'jump'),
     };
     this.p2 = {
       left: this.keys.p2Left.isDown || this.touchHoldP2.left,
@@ -83,7 +83,7 @@ export class InputManager {
       strong: Phaser.Input.Keyboard.JustDown(this.keys.p2Strong) || this.consumePulse(this.touchPulseP2, 'strong'),
       gearUp: Phaser.Input.Keyboard.JustDown(this.keys.p2GearUp) || this.consumePulse(this.touchPulseP2, 'gearUp'),
       gearDown: Phaser.Input.Keyboard.JustDown(this.keys.p2GearDown) || this.consumePulse(this.touchPulseP2, 'gearDown'),
-      jump: Phaser.Input.Keyboard.JustDown(this.keys.p2Jump) || this.touchHoldP2.jump,
+      jump: Phaser.Input.Keyboard.JustDown(this.keys.p2Jump) || this.consumePulse(this.touchPulseP2, 'jump'),
     };
   }
 
