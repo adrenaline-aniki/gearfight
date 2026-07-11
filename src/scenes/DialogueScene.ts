@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH, PIXEL_FONT } from '../config/constants';
 import { AudioManager } from '../systems/AudioManager';
+import { loadFighterIdle, loadPortraits, setLoaderBase } from '../systems/AssetPaths';
 import type { DialogueLine } from '../types/game';
 
 interface DialogueSceneData {
@@ -71,6 +72,17 @@ export class DialogueScene extends Phaser.Scene {
     this.finished = false;
   }
 
+  preload() {
+    setLoaderBase(this);
+    loadFighterIdle(this, 'hajime');
+    const charIds = new Set<string>();
+    for (const line of this.lines) {
+      const charId = SPEAKER_CHARACTER[line.speaker];
+      if (charId) charIds.add(charId);
+    }
+    for (const charId of charIds) loadPortraits(this, charId);
+  }
+
   create() {
     this.audio = new AudioManager(this);
     this.audio.unlock();
@@ -95,7 +107,9 @@ export class DialogueScene extends Phaser.Scene {
     this.add.rectangle(GAME_WIDTH / 2, boxY, GAME_WIDTH - 12, 44, 0x0d0d1a, 0.92)
       .setStrokeStyle(1, 0x4a4a6e);
 
-    this.speakerPortrait = this.add.image(PORTRAIT_X, boxY, 'portrait_takumi_normal')
+    // Placeholder texture only - always loaded regardless of this dialogue's
+    // speakers (see preload()), and hidden until showLine() sets the real one.
+    this.speakerPortrait = this.add.image(PORTRAIT_X, boxY, 'hajime_idle')
       .setDisplaySize(PORTRAIT_WIDTH, PORTRAIT_HEIGHT)
       .setVisible(false);
 

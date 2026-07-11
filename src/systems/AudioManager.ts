@@ -66,8 +66,17 @@ export class AudioManager {
     osc.stop(ctx.currentTime + p.dur);
   }
 
-  static preload(scene: Phaser.Scene) {
+  // Split by track (~7MB each) and queued only by the scene that actually
+  // plays it, so neither blocks the other's scene from appearing - see
+  // TitleScene/BattleScene's create() for the non-blocking background-load
+  // pattern this is meant to be used with.
+  static preloadTitle(scene: Phaser.Scene) {
+    if (scene.cache.audio.exists('bgmTitle')) return;
     scene.load.audio('bgmTitle', AUDIO_URLS.bgmTitle);
+  }
+
+  static preloadBattle(scene: Phaser.Scene) {
+    if (scene.cache.audio.exists('bgmBattle')) return;
     scene.load.audio('bgmBattle', AUDIO_URLS.bgmBattle);
   }
 }

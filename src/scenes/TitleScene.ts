@@ -1,9 +1,11 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH, PIXEL_FONT } from '../config/constants';
 import { AudioManager } from '../systems/AudioManager';
+import { setLoaderBase } from '../systems/AssetPaths';
 
 export class TitleScene extends Phaser.Scene {
   private audio!: AudioManager;
+  private wantsBgm = false;
 
   constructor() {
     super('TitleScene');
@@ -11,6 +13,19 @@ export class TitleScene extends Phaser.Scene {
 
   create() {
     this.audio = new AudioManager(this);
+
+    // Title music (~7MB) loads in the background instead of blocking this
+    // screen from appearing - see BootScene's comment for why upfront
+    // loading was cut way back. If the player has already tapped to start
+    // by the time it's ready, play it then instead of missing it entirely.
+    setLoaderBase(this);
+    AudioManager.preloadTitle(this);
+    if (this.load.list.size > 0) {
+      this.load.once(Phaser.Loader.Events.COMPLETE, () => {
+        if (this.wantsBgm && this.scene.isActive()) this.audio.playBgm('bgmTitle');
+      });
+      this.load.start();
+    }
 
     const bg = this.add.graphics();
     bg.fillStyle(0x1a1a2e);
@@ -59,6 +74,7 @@ export class TitleScene extends Phaser.Scene {
 
     this.input.once('pointerdown', () => {
       this.audio.unlock();
+      this.wantsBgm = true;
       this.audio.playBgm('bgmTitle');
     });
   }

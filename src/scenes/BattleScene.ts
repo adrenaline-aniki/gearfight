@@ -14,7 +14,9 @@ import { spawnMechanismOverlay } from '../systems/MechanismOverlay';
 import { SaveManager } from '../systems/SaveManager';
 import { BattleHUD } from '../ui/BattleHUD';
 import { TouchControls } from '../ui/TouchControls';
-import type { BattleConfig, TheoryBonusEvent } from '../types/game';
+import { loadFighterSprites, setLoaderBase } from '../systems/AssetPaths';
+import { SPRITE_FIGHTERS } from '../config/constants';
+import type { BattleConfig, TheoryBonusEvent, SpriteFighterId } from '../types/game';
 
 export class BattleScene extends Phaser.Scene {
   private config!: BattleConfig;
@@ -50,11 +52,32 @@ export class BattleScene extends Phaser.Scene {
     this.tutorialHits = 0;
   }
 
+  preload() {
+    setLoaderBase(this);
+    if ((SPRITE_FIGHTERS as readonly string[]).includes(this.config.player1)) {
+      loadFighterSprites(this, this.config.player1 as SpriteFighterId);
+    }
+    if ((SPRITE_FIGHTERS as readonly string[]).includes(this.config.player2)) {
+      loadFighterSprites(this, this.config.player2 as SpriteFighterId);
+    }
+  }
+
   create() {
     this.drawStage();
     this.audio = new AudioManager(this);
     this.audio.unlock();
-    this.audio.playBgm('bgmBattle');
+
+    // Battle BGM (~7MB) loads in the background instead of delaying the
+    // fight from starting - see TitleScene's create() for the same pattern.
+    AudioManager.preloadBattle(this);
+    if (this.load.list.size > 0) {
+      this.load.once(Phaser.Loader.Events.COMPLETE, () => {
+        if (this.scene.isActive()) this.audio.playBgm('bgmBattle');
+      });
+      this.load.start();
+    } else {
+      this.audio.playBgm('bgmBattle');
+    }
 
     this.p1 = new Fighter(this, {
       id: this.config.player1,

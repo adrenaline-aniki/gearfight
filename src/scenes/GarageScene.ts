@@ -5,6 +5,7 @@ import {
   type ArmPartId, type ArmType, type HeadPartId, type LegPartId, type MechType, type PartLoadout,
 } from '../config/parts';
 import { AudioManager } from '../systems/AudioManager';
+import { loadFighterSprites, setLoaderBase } from '../systems/AssetPaths';
 import { SaveManager } from '../systems/SaveManager';
 
 const ARM_IDS = Object.keys(ARM_PARTS) as ArmPartId[];
@@ -39,6 +40,11 @@ export class GarageScene extends Phaser.Scene {
 
   constructor() {
     super('GarageScene');
+  }
+
+  preload() {
+    setLoaderBase(this);
+    loadFighterSprites(this, 'hajime');
   }
 
   create() {
