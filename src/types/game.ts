@@ -1,7 +1,7 @@
 import type { GearLevel } from '../config/constants';
 import type { PartLoadout } from '../config/parts';
 
-export type BattleMode = 'tutorial' | 'story' | 'free' | 'classroom';
+export type BattleMode = 'tutorial' | 'story' | 'free';
 export type FighterId = 'hajime' | 'kakashi' | 'wizel' | 'ganrock' | 'aegis' | 'drift' | 'theorion' | 'omeganova' | 'sophislegion';
 export type SpriteFighterId = 'hajime' | 'wizel' | 'kakashi' | 'ganrock' | 'aegis' | 'drift' | 'theorion' | 'omeganova' | 'sophislegion';
 

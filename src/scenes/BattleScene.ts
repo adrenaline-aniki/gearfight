@@ -97,23 +97,19 @@ export class BattleScene extends Phaser.Scene {
       x: 280,
       gear: this.config.player2 === 'wizel' ? 1 : 3,
     });
-    this.p2.isAI = this.config.mode !== 'classroom';
+    this.p2.isAI = true;
 
     this.inputMgr = new InputManager(this);
     this.gameFeel = new GameFeel(this, this.cameras.main);
     this.hud = new BattleHUD(this);
 
-    const aiProfile = this.config.player2 === 'kakashi' ? 'kakashi' : this.config.mode === 'classroom' ? 'none' : 'sonica';
+    const aiProfile = this.config.player2 === 'kakashi' ? 'kakashi' : 'sonica';
     this.ai = new AIController(aiProfile);
     if (this.config.mode === 'tutorial') {
       this.ai.setKakashiStage(this.tutorialStep === 1 ? 0 : this.tutorialStep === 2 ? 1 : 2);
     }
 
-    if (this.config.mode === 'classroom') {
-      this.touch = new TouchControls(this, this.inputMgr, 'both');
-    } else {
-      this.touch = new TouchControls(this, this.inputMgr, 'left');
-    }
+    this.touch = new TouchControls(this, this.inputMgr);
 
     this.showRoundAnnounce();
   }
@@ -138,7 +134,7 @@ export class BattleScene extends Phaser.Scene {
   private showRoundAnnounce() {
     const label = this.config.mode === 'tutorial'
       ? `チュートリアル Step ${this.tutorialStep}`
-      : this.config.mode === 'classroom' ? '教室モード 1本勝負' : 'ROUND 1';
+      : 'ROUND 1';
     const text = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2, label, {
       fontSize: '20px', color: '#fff', fontFamily: PIXEL_FONT, fontStyle: 'bold',
     }).setOrigin(0.5).setDepth(150);
@@ -168,7 +164,7 @@ export class BattleScene extends Phaser.Scene {
     this.p2.tickBuffer();
 
     this.p1.updateFacing(this.p2.x);
-    if (this.config.mode !== 'classroom') this.p2.updateFacing(this.p1.x);
+    this.p2.updateFacing(this.p1.x);
 
     this.p1.processInput(p1Input, this.assistMode);
     this.p2.processInput(p2Input, this.assistMode);
@@ -195,8 +191,7 @@ export class BattleScene extends Phaser.Scene {
     if (this.roundTimer <= 0) this.endRound('timeup');
 
     this.hud.update(this.p1, this.p2, this.roundTimer, this.theoryCount, this.getHint());
-    this.touch?.updateGear('p1', this.p1.gear);
-    if (this.config.mode === 'classroom') this.touch?.updateGear('p2', this.p2.gear);
+    this.touch?.updateGear(this.p1.gear);
     this.syncVisuals();
 
     if (this.p1.hp <= 0) this.endRound('p2');
@@ -341,31 +336,9 @@ export class BattleScene extends Phaser.Scene {
       result = winner === 'p1' ? `${this.p1.name} WIN!` : `${this.p2.name} WIN!`;
     }
 
-    if (winner === 'p1' && this.config.mode === 'classroom') {
-      this.promptClassroomName();
-      return;
-    }
-
     this.gameFeel.applySlowMo(30);
     this.audio.playSe('ko');
     this.showResult(result, winner === 'p1');
-  }
-
-  private promptClassroomName() {
-    const overlay = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.7).setDepth(200);
-    const label = this.add.text(GAME_WIDTH / 2, 80, '勝者の名前を入力', { fontSize: '10px', color: '#fff', fontFamily: PIXEL_FONT }).setOrigin(0.5).setDepth(201);
-    const name = this.add.text(GAME_WIDTH / 2, 100, 'プレイヤー1', { fontSize: '10px', color: '#ffdd44', fontFamily: PIXEL_FONT, backgroundColor: '#333', padding: { x: 8, y: 4 } }).setOrigin(0.5).setDepth(201).setInteractive();
-
-    const confirm = this.add.text(GAME_WIDTH / 2, 130, '決定', { fontSize: '10px', color: '#fff', fontFamily: PIXEL_FONT, backgroundColor: '#2c3e6e', padding: { x: 10, y: 4 } }).setOrigin(0.5).setDepth(201).setInteractive();
-
-    confirm.on('pointerdown', () => {
-      SaveManager.addClassroomWin('プレイヤー1');
-      overlay.destroy();
-      label.destroy();
-      name.destroy();
-      confirm.destroy();
-      this.showResult('1P WIN!\nランキングに記録しました');
-    });
   }
 
   private showResult(text: string, playerWon = false) {

@@ -48,7 +48,6 @@ export class ModeSelectScene extends Phaser.Scene {
         }),
       },
       { label: '隠しボス（vs ソフィス・レギオン）', action: toBattle({ mode: 'story', player1: 'hajime', player2: 'sophislegion', roundTime: 60, roundsToWin: 2, assistMode: save.assistMode }) },
-      { label: '教室モード（2P対戦）', action: toBattle({ mode: 'classroom', player1: 'hajime', player2: 'hajime', roundTime: 60, roundsToWin: 1, assistMode: save.assistMode }) },
       { label: 'フリー対戦（vs CPU）', action: toBattle({ mode: 'free', player1: 'hajime', player2: 'wizel', roundTime: 60, roundsToWin: 1, assistMode: save.assistMode }) },
     ];
 

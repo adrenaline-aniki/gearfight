@@ -2,7 +2,7 @@ import type { Fighter } from '../entities/Fighter';
 import type { PlayerInput } from '../types/game';
 import { EMPTY_INPUT } from '../systems/InputManager';
 
-export type AIProfile = 'kakashi' | 'sonica' | 'none';
+export type AIProfile = 'kakashi' | 'sonica';
 
 // How close the opponent needs to be for a committed-to-attack read to bother
 // blocking - roughly the reach of a strong attack's hitbox plus some margin.
@@ -34,8 +34,6 @@ export class AIController {
   }
 
   update(fighter: Fighter, opponent: Fighter): PlayerInput {
-    if (this.profile === 'none') return { ...EMPTY_INPUT };
-
     // Blocking is a reflex, not a "thought" - it bypasses the thinkTimer
     // cooldown that paces normal decisions, so the guard input can be held
     // every frame for as long as the read attack is still active.
