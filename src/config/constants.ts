@@ -137,14 +137,23 @@ export const PORTRAIT_EMOTIONS = [
 // that only get a settei-sheet crop rather than a dedicated expression sheet.
 export const PORTRAIT_FLAT_IDS: readonly string[] = [];
 
+// 2026-07-11: all PNG-backed fighters' sprites are now pre-downscaled to this
+// exact height at asset-prep time (quality Lanczos resampling, see
+// scratchpad's batch_resize_sprites.py in that day's session - not checked
+// into the repo, it's a one-shot tool) instead of being left oversized for
+// Phaser to shrink at runtime via nearest-neighbor filtering, which was
+// producing visibly aliased/noisy sprites (worst on theorion/omeganova,
+// ~5.5x oversized). Source height now equals target height, so spriteScale
+// is ~1 for all of them - kakashi is untouched (procedural SpriteFactory
+// texture, not a PNG, doesn't have this problem).
 export const SPRITE_IDLE_SOURCE_HEIGHT: Record<(typeof ALL_SPRITE_FIGHTERS)[number], number> = {
-  hajime: 180,
-  wizel: 166,
+  hajime: 62,
+  wizel: 62,
   kakashi: 150,
-  ganrock: 167,
-  aegis: 178,
-  drift: 190,
-  theorion: 343,
-  omeganova: 479,
-  sophislegion: 219,
+  ganrock: 62,
+  aegis: 62,
+  drift: 62,
+  theorion: 62,
+  omeganova: 82,
+  sophislegion: 82,
 };
