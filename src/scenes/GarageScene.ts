@@ -19,17 +19,45 @@ const TYPE_COLOR: Record<ArmType, number> = { speed: 0x66ccff, power: 0xff8844, 
 const MAX_HP_SCALE = 1200; // armor-head ceiling, for the HP bar's full width
 const MIN_SPEED_MUL = 0.7;
 const MAX_SPEED_MUL = 1.3;
+const DEFAULT_PROMPT = 'パーツを変更したい部位を選ぼう';
+
+// Highlight ring position on the preview icon, per slot - approximate since
+// there's no per-region art to key off of (relative to the preview's own
+// origin at (0.5, 1), in preview-local unscaled pixels).
+const SLOT_HIGHLIGHT_OFFSET: Record<keyof PartLoadout, { x: number; y: number; r: number }> = {
+  head: { x: 0, y: -64, r: 11 },
+  armRight: { x: 14, y: -44, r: 10 },
+  armLeft: { x: -14, y: -44, r: 10 },
+  legs: { x: 0, y: -12, r: 13 },
+};
+
+interface SlotHandle {
+  label: string;
+  nameText: Phaser.GameObjects.Text;
+  prevArrow: Phaser.GameObjects.Text;
+  nextArrow: Phaser.GameObjects.Text;
+  rowBg: Phaser.GameObjects.Rectangle;
+  descriptionFor: (id: string) => string;
+}
 
 // Spec §3.5 garage: swap Hajime's four part slots and preview the resulting
 // stats. No sprite/appearance change in battle (decided scope - parts are
 // stats-only), but this screen itself should read at a glance, not like a
 // spreadsheet: color-coded types, a type-triangle diagram, and stat bars.
+//
+// Flow (per playtest feedback): the screen opens with no slot selected and a
+// neutral prompt: tap a slot to focus it, only the focused slot's ◀▶ actually
+// cycles parts, and the preview icon highlights roughly where that part sits
+// on the body - instead of all 4 rows being interactive at once with no
+// indication of which part the description text below was even about.
 export class GarageScene extends Phaser.Scene {
   private audio!: AudioManager;
   private loadout!: PartLoadout;
-  private nameTexts: Partial<Record<keyof PartLoadout, Phaser.GameObjects.Text>> = {};
+  private slots: Partial<Record<keyof PartLoadout, SlotHandle>> = {};
   private typeDots: Partial<Record<'armRight' | 'armLeft', Phaser.GameObjects.Arc>> = {};
+  private focusedSlot: keyof PartLoadout | null = null;
   private preview!: Phaser.GameObjects.Image;
+  private previewHighlight!: Phaser.GameObjects.Arc;
   private typeLabel!: Phaser.GameObjects.Text;
   private triangleNodes: Phaser.GameObjects.Text[] = [];
   private hpBar!: Phaser.GameObjects.Graphics;
@@ -51,6 +79,7 @@ export class GarageScene extends Phaser.Scene {
     this.audio = new AudioManager(this);
     this.audio.unlock();
     this.loadout = { ...SaveManager.load().loadout };
+    this.focusedSlot = null;
 
     this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x1a1a2e);
     this.add.text(GAME_WIDTH / 2, 13, 'ガレージ（パーツ換装）', {
@@ -65,9 +94,14 @@ export class GarageScene extends Phaser.Scene {
     this.add.rectangle(GAME_WIDTH / 2, 157, GAME_WIDTH - 16, 90, 0x0d0d1a, 0.9).setStrokeStyle(1, 0x4a4a6e);
 
     // Fighter preview, tinted by current type - a menu-only affordance, the
-    // actual battle sprite never changes (see CLAUDE.md for why).
-    this.preview = this.add.image(50, 194, 'hajime_idle').setOrigin(0.5, 1).setScale(0.32);
-    this.typeLabel = this.add.text(50, 118, '', {
+    // actual battle sprite never changes (see CLAUDE.md for why). Enlarged
+    // significantly from the original (0.32 scale, practically a thumbnail)
+    // since it now also carries the per-slot highlight ring.
+    this.preview = this.add.image(55, 199, 'hajime_idle').setOrigin(0.5, 1).setScale(1.3);
+    this.previewHighlight = this.add.circle(0, 0, 10, 0xffdd44, 0.35)
+      .setStrokeStyle(1, 0xffdd44, 0.9)
+      .setVisible(false);
+    this.typeLabel = this.add.text(55, 115, '', {
       fontSize: '10px', color: '#fff', fontFamily: PIXEL_FONT, fontStyle: 'bold',
     }).setOrigin(0.5, 0);
 
@@ -100,16 +134,15 @@ export class GarageScene extends Phaser.Scene {
     this.spdBar = this.add.graphics();
     this.spdValueText = this.add.text(374, 140, '', { fontSize: '10px', color: '#fff', fontFamily: PIXEL_FONT }).setOrigin(1, 0.5);
 
-    // Part description: dynamic, shows whichever part was most recently
-    // cycled (see buildSlotRow's cycle()) so pros/cons are visible right
-    // after you change something, full-width so longer text still fits in 2 lines.
+    // Part description: defaults to a neutral prompt until a slot is picked,
+    // then shows whichever part is currently focused, updating every cycle.
     this.descriptionText = this.add.text(90, 176, '', {
       fontSize: '10px', color: '#88ff88', fontFamily: PIXEL_FONT,
       wordWrap: { width: 278, useAdvancedWrap: true }, lineSpacing: 2,
     });
 
     this.updatePreview();
-    this.descriptionText.setText(`【右腕】${ARM_PARTS[this.loadout.armRight].description}`);
+    this.descriptionText.setText(DEFAULT_PROMPT);
 
     const back = this.add.text(8, GAME_HEIGHT - 10, '← モード選択', {
       fontSize: '10px', color: '#aaa', fontFamily: PIXEL_FONT,
@@ -121,12 +154,16 @@ export class GarageScene extends Phaser.Scene {
     y: number, label: string, slot: K, ids: PartLoadout[K][],
     nameFor: (id: PartLoadout[K]) => string, descriptionFor: (id: PartLoadout[K]) => string,
   ) {
+    // Full-width band behind the row - tapping anywhere on it focuses this
+    // slot; also doubles as the focus highlight (brighter when selected).
+    const rowBg = this.add.rectangle(GAME_WIDTH / 2, y, GAME_WIDTH - 8, 20, 0x2c3e6e, 0)
+      .setInteractive({ useHandCursor: true });
+
     this.add.text(14, y, label, { fontSize: '10px', color: '#aaaacc', fontFamily: PIXEL_FONT }).setOrigin(0, 0.5);
 
     const nameText = this.add.text(GAME_WIDTH / 2 - 6, y, nameFor(this.loadout[slot]), {
       fontSize: '10px', color: '#ffdd44', fontFamily: PIXEL_FONT,
     }).setOrigin(0.5);
-    this.nameTexts[slot] = nameText;
 
     if (slot === 'armRight' || slot === 'armLeft') {
       const armSlot = slot as 'armRight' | 'armLeft';
@@ -134,7 +171,13 @@ export class GarageScene extends Phaser.Scene {
       this.typeDots[armSlot] = dot;
     }
 
+    const prevArrow = this.add.text(76, y, '◀', { fontSize: '10px', color: '#88ddff', fontFamily: PIXEL_FONT })
+      .setOrigin(0.5).setInteractive({ useHandCursor: true }).setVisible(false);
+    const nextArrow = this.add.text(GAME_WIDTH - 40, y, '▶', { fontSize: '10px', color: '#88ddff', fontFamily: PIXEL_FONT })
+      .setOrigin(0.5).setInteractive({ useHandCursor: true }).setVisible(false);
+
     const cycle = (dir: 1 | -1) => {
+      if (this.focusedSlot !== slot) return; // only the focused slot's arrows do anything
       const idx = ids.indexOf(this.loadout[slot]);
       const next = ids[(idx + dir + ids.length) % ids.length];
       this.loadout[slot] = next;
@@ -147,20 +190,39 @@ export class GarageScene extends Phaser.Scene {
       this.audio.playSe('select');
     };
 
-    // Tapping the part's name itself (not just the arrows) also surfaces its
-    // description - lets you check pros/cons of the currently-equipped part
-    // without needing to cycle away from it first. The 【label】 prefix makes
-    // clear which of the 4 slots the text below is even describing.
-    nameText.setInteractive({ useHandCursor: true });
-    nameText.on('pointerdown', () => this.descriptionText.setText(`【${label}】${descriptionFor(this.loadout[slot])}`));
+    rowBg.on('pointerdown', () => this.focusSlot(slot));
+    prevArrow.on('pointerdown', () => cycle(-1));
+    nextArrow.on('pointerdown', () => cycle(1));
 
-    const prev = this.add.text(76, y, '◀', { fontSize: '10px', color: '#88ddff', fontFamily: PIXEL_FONT })
-      .setOrigin(0.5).setInteractive({ useHandCursor: true });
-    prev.on('pointerdown', () => cycle(-1));
+    this.slots[slot] = {
+      label, nameText, prevArrow, nextArrow, rowBg,
+      descriptionFor: (id: string) => descriptionFor(id as PartLoadout[K]),
+    };
+  }
 
-    const next = this.add.text(GAME_WIDTH - 40, y, '▶', { fontSize: '10px', color: '#88ddff', fontFamily: PIXEL_FONT })
-      .setOrigin(0.5).setInteractive({ useHandCursor: true });
-    next.on('pointerdown', () => cycle(1));
+  // Focuses one slot: shows only its ◀▶ arrows, highlights its row and the
+  // matching region on the preview icon, and surfaces its current part's
+  // description - the single entry point for "select a part to work on".
+  private focusSlot(slot: keyof PartLoadout) {
+    this.focusedSlot = slot;
+    this.audio.playSe('select');
+
+    for (const key of Object.keys(this.slots) as (keyof PartLoadout)[]) {
+      const handle = this.slots[key]!;
+      const isFocused = key === slot;
+      handle.prevArrow.setVisible(isFocused);
+      handle.nextArrow.setVisible(isFocused);
+      handle.rowBg.setFillStyle(0x2c3e6e, isFocused ? 0.55 : 0);
+    }
+
+    const offset = SLOT_HIGHLIGHT_OFFSET[slot];
+    this.previewHighlight
+      .setPosition(this.preview.x + offset.x, this.preview.y + offset.y)
+      .setRadius(offset.r)
+      .setVisible(true);
+
+    const handle = this.slots[slot]!;
+    this.descriptionText.setText(`【${handle.label}】${handle.descriptionFor(this.loadout[slot])}`);
   }
 
   private updatePreview() {
