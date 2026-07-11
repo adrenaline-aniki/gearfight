@@ -1,16 +1,5 @@
-@font-face {
-  font-family: 'PixelMplus10';
-  src: url('/fonts/PixelMplus10-Regular.ttf') format('truetype');
-  font-weight: normal;
-  font-display: block;
-}
-
-@font-face {
-  font-family: 'PixelMplus10';
-  src: url('/fonts/PixelMplus10-Bold.ttf') format('truetype');
-  font-weight: bold;
-  font-display: block;
-}
+/* @font-face lives in main.ts instead of here - a plain CSS url(/fonts/...)
+   can't pick up Vite's `base` (needed for the GitHub Pages build target). */
 
 * {
   margin: 0;

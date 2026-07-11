@@ -9,28 +9,32 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload() {
+    // Base-relative asset paths (no leading slash) + an explicit loader
+    // baseURL from Vite's `base`, so this works both served from root
+    // (local/Firebase) and from /gearfight/ (GitHub Pages build target).
+    this.load.setBaseURL(import.meta.env.BASE_URL);
     AudioManager.preload(this);
-    this.load.image('char_icons', '/char_icons.PNG');
+    this.load.image('char_icons', 'char_icons.PNG');
     for (const id of PORTRAIT_EMOTION_IDS) {
       for (const emotion of PORTRAIT_EMOTIONS) {
-        this.load.image(`portrait_${id}_${emotion}`, `/sprites/portraits/${id}/${emotion}.png`);
+        this.load.image(`portrait_${id}_${emotion}`, `sprites/portraits/${id}/${emotion}.png`);
       }
     }
     for (const id of PORTRAIT_FLAT_IDS) {
-      this.load.image(`portrait_${id}`, `/sprites/portraits/${id}.png`);
+      this.load.image(`portrait_${id}`, `sprites/portraits/${id}.png`);
     }
     for (const fighter of SPRITE_FIGHTERS) {
       for (const pose of SPRITE_POSES) {
         if (pose === 'walk') continue; // handled below (may be multiple frames)
-        this.load.image(`${fighter}_${pose}`, `/sprites/${fighter}/${pose}.png`);
+        this.load.image(`${fighter}_${pose}`, `sprites/${fighter}/${pose}.png`);
       }
       const walkFrames = SPRITE_WALK_FRAME_COUNT[fighter] ?? 1;
       if (walkFrames > 1) {
         for (let i = 0; i < walkFrames; i++) {
-          this.load.image(`${fighter}_walk_${i}`, `/sprites/${fighter}/walk_${i}.png`);
+          this.load.image(`${fighter}_walk_${i}`, `sprites/${fighter}/walk_${i}.png`);
         }
       } else {
-        this.load.image(`${fighter}_walk`, `/sprites/${fighter}/walk.png`);
+        this.load.image(`${fighter}_walk`, `sprites/${fighter}/walk.png`);
       }
     }
   }

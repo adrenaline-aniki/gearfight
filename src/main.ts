@@ -9,6 +9,27 @@ import { DialogueScene } from './scenes/DialogueScene';
 import { GarageScene } from './scenes/GarageScene';
 import { BattleScene } from './scenes/BattleScene';
 
+// A plain CSS `url(/fonts/...)` can't pick up Vite's `base` (needed so the
+// GitHub Pages build target, which serves under /gearfight/, still finds its
+// fonts), so the @font-face rule is injected here instead, where BASE_URL is available.
+const fontBase = import.meta.env.BASE_URL;
+const fontStyle = document.createElement('style');
+fontStyle.textContent = `
+@font-face {
+  font-family: 'PixelMplus10';
+  src: url('${fontBase}fonts/PixelMplus10-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'PixelMplus10';
+  src: url('${fontBase}fonts/PixelMplus10-Bold.ttf') format('truetype');
+  font-weight: bold;
+  font-display: block;
+}
+`;
+document.head.appendChild(fontStyle);
+
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
   parent: 'app',

@@ -76,9 +76,12 @@ export const THROW_RANGE = 22;
 export const THROW_HEIGHT = 24;
 export const KNOCKBACK_THROW_BONUS = 6;
 
+// Paths are base-relative (no leading slash) - BootScene.preload() sets the
+// loader's baseURL from Vite's `base`, so these resolve correctly whether
+// the site is served from root (local/Firebase) or /gearfight/ (GitHub Pages).
 export const AUDIO_URLS = {
-  bgmTitle: '/music/next-gear.mp3',
-  bgmBattle: '/music/next-gear-(instrumental-version).mp3',
+  bgmTitle: 'music/next-gear.mp3',
+  bgmBattle: 'music/next-gear-(instrumental-version).mp3',
 } as const;
 
 export const SPRITE_POSES = [
