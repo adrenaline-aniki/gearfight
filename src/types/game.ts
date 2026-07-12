@@ -19,6 +19,7 @@ export type FighterState =
   | 'throw'
   | 'hitstun'
   | 'knockdown'
+  | 'victory'
   | 'dead';
 
 export interface FighterConfig {

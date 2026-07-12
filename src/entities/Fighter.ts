@@ -43,6 +43,7 @@ import {
   WALK_FRAME_INTERVAL,
   type GearLevel,
 } from '../config/constants';
+import { SPRITE_ANCHORS } from '../config/spriteAnchors';
 import { ARM_PARTS, FIGHTER_INNATE_TYPE, HEAD_PARTS, LEG_PARTS, resolveMechType, type MechType, type PartLoadout } from '../config/parts';
 import type { PlayerInput } from '../types/game';
 
@@ -159,6 +160,7 @@ export class Fighter {
       case 'shift': return this.stateTimer <= 4 ? 'shift_complete' : 'shift_start';
       case 'hitstun': return 'hitstun';
       case 'knockdown': return 'knockdown';
+      case 'victory': return 'victory';
       case 'dead': return 'defeat';
       default: return 'idle';
     }
@@ -194,8 +196,18 @@ export class Fighter {
       textureKey = `${this.id}_${pose}`;
     }
 
+    // Not every fighter has every pose (procedural kakashi only defines a few);
+    // fall back to idle rather than flashing a missing-texture box.
+    if (!sprite.scene.textures.exists(textureKey)) textureKey = `${this.id}_idle`;
+
     if (textureKey !== this.currentPose) {
       sprite.setTexture(textureKey);
+      // Re-anchor to this pose's foot centre so the feet stay planted across
+      // pose changes instead of jumping sideways with the image width (see
+      // spriteAnchors.ts). Procedural fighters (kakashi) have no entry and keep
+      // the plain bottom-centre origin.
+      const anchor = SPRITE_ANCHORS[textureKey];
+      sprite.setOrigin(anchor ? anchor[0] : 0.5, anchor ? anchor[1] : 1);
       this.currentPose = textureKey;
     }
 
@@ -761,21 +773,25 @@ export class Fighter {
   }
 
   syncPosition() {
-    // Small vertical bob + horizontal sway while walking, 90 degrees out of
-    // phase with each other over one full walk-frame ping-pong (frame0->
-    // frame1->frame0) - a static side-view cutout sliding across flat ground
-    // doesn't read as walking at all, even with leg-pose swaps. The sway in
-    // particular fakes a weight-shift/reach-and-recover motion that a plain
-    // 2-frame pose swap can't sell on its own (some character's extracted
-    // walk frames are close enough to their idle pose that without this,
-    // the translation alone reads as gliding rather than stepping).
+    // Walk life on a single static pose (most fighters have no real leg-cycle
+    // art). Classic squash-and-stretch: TWO weight-plants per stride - the body
+    // dips and squashes as weight lands on each foot, then lifts and stretches
+    // as the free leg passes. Because the sprite is now foot-anchored (see
+    // spriteAnchors.ts), the squash compresses from planted feet upward, reading
+    // as a real step-down instead of the old flat slide. A faint sway adds the
+    // side-to-side weight shift. All purely visual (container/sprite transforms);
+    // this.x/this.y drive the hitbox and are untouched.
     const bobCycle = WALK_FRAME_INTERVAL * 2;
     const phase = (this.walkBobTimer % bobCycle) / bobCycle * Math.PI * 2;
-    const bob = this.state === 'walk' ? Math.sin(phase) * 1.5 : 0;
-    const sway = this.state === 'walk' ? Math.cos(phase) * 1.5 : 0;
+    const walking = this.state === 'walk';
+    const plant = walking ? Math.abs(Math.cos(phase)) : 0; // 1 at each foot-plant, 0 mid-stride
+    const bob = plant * 1.6;
+    const sway = walking ? Math.sin(phase) * 0.6 : 0;
+    const squash = plant * 0.05;
     this.container.setPosition(this.x, this.y + bob);
     this.container.setScale(this.facing, 1);
     this.sprite.setPosition(sway, SPRITE_FOOT_OFFSET);
+    this.sprite.setScale(this.spriteScale * (1 + squash * 0.5), this.spriteScale * (1 - squash));
   }
 
   destroy() {

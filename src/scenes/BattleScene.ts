@@ -403,9 +403,21 @@ export class BattleScene extends Phaser.Scene {
       result = winner === 'p1' ? `${this.p1.name} WIN!` : `${this.p2.name} WIN!`;
     }
 
+    // Strike the win/lose poses (these were never shown before - the victory
+    // sprite in particular had no in-game trigger at all). update() halts on
+    // roundOver, so pose + redraw once here to freeze the final tableau.
+    this.poseRoundEnd(winner);
+
     this.gameFeel.applySlowMo(30);
     this.audio.playSe('ko');
     this.showResult(result, winner === 'p1');
+  }
+
+  private poseRoundEnd(winner: 'p1' | 'p2' | 'timeup') {
+    const w = winner === 'p1' ? this.p1 : winner === 'p2' ? this.p2 : null;
+    const l = winner === 'p1' ? this.p2 : winner === 'p2' ? this.p1 : null;
+    if (w) { w.state = 'victory'; w.redraw(); w.syncPosition(); }
+    if (l) { l.state = 'dead'; l.redraw(); l.syncPosition(); } // 'dead' maps to the defeat pose
   }
 
   private showResult(text: string, playerWon = false) {
