@@ -27,21 +27,37 @@ export class GameFeel {
     this.slowMoFrames = Math.max(this.slowMoFrames, frames);
   }
 
-  spawnHitSpark(x: number, y: number) {
-    const spark = this.scene.add.graphics();
-    spark.fillStyle(0xffffff);
-    spark.fillRect(-4, -4, 8, 8);
-    spark.setPosition(x, y);
-    spark.setDepth(50);
-
+  spawnHitSpark(x: number, y: number, strong = false) {
+    // A bright flash plus a small radial burst of shards, instead of one square -
+    // reads as an actual impact. Strong/combo hits get more, faster shards.
+    const flash = this.scene.add.graphics();
+    flash.fillStyle(strong ? 0xffee88 : 0xffffff);
+    flash.fillCircle(0, 0, strong ? 9 : 6);
+    flash.setPosition(x, y).setDepth(50);
     this.scene.tweens.add({
-      targets: spark,
-      alpha: 0,
-      scaleX: 2,
-      scaleY: 2,
-      duration: 120,
-      onComplete: () => spark.destroy(),
+      targets: flash, alpha: 0, scaleX: 2.2, scaleY: 2.2, duration: 130,
+      onComplete: () => flash.destroy(),
     });
+
+    const shardCount = strong ? 7 : 5;
+    const spread = strong ? 34 : 24;
+    for (let i = 0; i < shardCount; i++) {
+      const shard = this.scene.add.graphics();
+      shard.fillStyle(strong ? 0xffcc44 : 0xffffff);
+      shard.fillRect(-1.5, -1.5, 3, 3);
+      shard.setPosition(x, y).setDepth(51);
+      const angle = (Math.PI * 2 * i) / shardCount + Math.random() * 0.5;
+      const dist = spread * (0.6 + Math.random() * 0.4);
+      this.scene.tweens.add({
+        targets: shard,
+        x: x + Math.cos(angle) * dist,
+        y: y + Math.sin(angle) * dist,
+        alpha: 0,
+        duration: 160 + Math.random() * 80,
+        ease: 'Quad.Out',
+        onComplete: () => shard.destroy(),
+      });
+    }
   }
 
   update() {

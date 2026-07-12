@@ -35,11 +35,32 @@ export const HEAT_ON_HIT = 5;
 export const STRONG_ATTACK_EXTRA_FRAMES = 4;
 
 // Hit/block reaction durations (ticks).
-export const HITSTUN_FRAMES = 12;
+export const HITSTUN_FRAMES = 14;
 export const KNOCKDOWN_FRAMES = 30;
 export const KNOCKDOWN_DAMAGE_THRESHOLD = 60;
 export const BLOCKSTUN_FRAMES = 8;
-export const HIT_INVULN_FRAMES = 10;
+// Short post-hit i-frames. Kept well BELOW hitstun so that a follow-up from a
+// DIFFERENT attack (a combo) still connects during the back half of hitstun,
+// while a single attack's multi-frame active window can't re-hit (that's
+// handled by Fighter.hasHitThisAttack instead - the old long invuln was the
+// only thing preventing combos, so it moved to a per-attack flag).
+export const HIT_INVULN_FRAMES = 5;
+
+// "ギアラッシュ" combo system: a weak attack that lands cleanly (not blocked)
+// can cancel its recovery into the next attack, enabling a weak->weak->strong
+// bread-and-butter. Strong is a hard finisher (opens no window), so chains are
+// capped at COMBO_MAX_HITS. Damage is prorated per hit so a low-gear rush and a
+// heavy high-gear single hit stay comparable (speed vs. power, on theme).
+export const COMBO_CANCEL_WINDOW = 16;        // frames after a clean hit you may cancel recovery
+export const COMBO_CANCEL_WINDOW_ASSIST = 24; // wider in assist mode
+export const COMBO_MAX_HITS = 3;              // weak, weak, strong
+export const COMBO_DROP_FRAMES = 26;          // idle frames before the combo count resets
+export const COMBO_PRORATION = [1, 0.8, 0.6] as const; // damage scaling by hit index
+// "RPM" finisher payoff: a strong that ENDS a chain hits harder the longer the
+// chain was (+15% per prior hit), so a full weak->weak->strong clearly out-rewards
+// mashing a single poke - the "build momentum, then hit hard" educational beat.
+// A lone strong (no chain) is unaffected. Still bounded well under a heavy GL5 hit.
+export const COMBO_FINISHER_RUSH = 0.15;
 
 // Knockback distance (px) applied to the defender, away from the attacker.
 export const KNOCKBACK_HIT = 6;

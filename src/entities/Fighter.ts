@@ -3,6 +3,12 @@ import { GROUND_Y } from '../config/constants';
 import type { FighterConfig, FighterId, FighterState } from '../types/game';
 import {
   BLOCKSTUN_FRAMES,
+  COMBO_CANCEL_WINDOW,
+  COMBO_CANCEL_WINDOW_ASSIST,
+  COMBO_DROP_FRAMES,
+  COMBO_FINISHER_RUSH,
+  COMBO_MAX_HITS,
+  COMBO_PRORATION,
   COYOTE_FRAMES,
   GEAR_TABLE,
   GUARD_REGEN_PER_SEC,
@@ -87,6 +93,18 @@ export class Fighter {
   attackActive = false;
   hitbox: Phaser.Geom.Rectangle | null = null;
   invuln = 0;
+  // Set true when the current attack connects; blocks the same attack's
+  // multi-frame active window from hitting again (a single move hits once).
+  // Reset when a new attack/super/throw starts. Replaces the old long invuln
+  // as the multi-hit guard, so combos (different attacks) can still connect.
+  hasHitThisAttack = false;
+
+  // "ギアラッシュ" combo state. comboHits = clean hits in the current chain this
+  // fighter is landing; cancelWindow = frames left to cancel recovery into the
+  // next attack; comboDropTimer = frames until an uncontinued chain resets.
+  comboHits = 0;
+  cancelWindow = 0;
+  comboDropTimer = 0;
 
   inputBuffer: { type: string; frames: number }[] = [];
   coyoteTimer = 0;
@@ -241,6 +259,25 @@ export class Fighter {
       return;
     }
 
+    // ギアラッシュ cancel: a weak attack that connected (cancelWindow open) can
+    // cancel its own recovery into the next hit. Strong is always allowed as
+    // the finisher; a second weak only for the first link (so the chain caps at
+    // weak->weak->strong). This runs BEFORE the generic mid-move lockout below.
+    if (this.state === 'attack_weak' && this.cancelWindow > 0) {
+      if (this.hasBuffered('strong')) {
+        this.consumeBuffered('strong');
+        this.cancelWindow = 0;
+        this.startAttack('attack_strong', true);
+        return;
+      }
+      if (this.comboHits < COMBO_MAX_HITS - 1 && this.hasBuffered('weak')) {
+        this.consumeBuffered('weak');
+        this.cancelWindow = 0;
+        this.startAttack('attack_weak', true);
+        return;
+      }
+    }
+
     if (
       this.state === 'hitstun' || this.state === 'knockdown' || this.state === 'dead'
       || this.state === 'blockstun' || this.state === 'attack_weak' || this.state === 'attack_strong'
@@ -323,12 +360,21 @@ export class Fighter {
     this.x = Phaser.Math.Clamp(this.x, 30, 354);
   }
 
-  private startAttack(type: 'attack_weak' | 'attack_strong') {
+  private startAttack(type: 'attack_weak' | 'attack_strong', fromCancel = false) {
+    // A fresh attack from neutral starts a new chain - reset the combo count so
+    // it can only ever climb via cancels (which are capped at weak->weak->strong).
+    // Without this, separate pokes landing near each other in time would keep
+    // inflating the count into a fake 10+ "combo".
+    if (!fromCancel) {
+      this.comboHits = 0;
+      this.cancelWindow = 0;
+    }
     this.state = type;
     const gear = GEAR_TABLE[this.gear];
     this.stateTimer = type === 'attack_weak' ? gear.startup + gear.recovery : gear.startup + gear.recovery + STRONG_ATTACK_EXTRA_FRAMES;
     this.attackActive = false;
     this.hitbox = null;
+    this.hasHitThisAttack = false;
     this.redraw();
   }
 
@@ -337,9 +383,25 @@ export class Fighter {
     this.stateTimer = this.getSuperStartup() + SUPER_ACTIVE_FRAMES + SUPER_RECOVERY;
     this.attackActive = false;
     this.hitbox = null;
+    this.hasHitThisAttack = false;
     this.superGauge = 0;
     this.superJustActivated = true;
     this.redraw();
+  }
+
+  // Called by BattleScene.checkHit the frame this fighter's attack connects
+  // cleanly (a real hit, not a block/throw/super). Advances the combo count and
+  // - for a weak that still has room in the chain - opens the cancel window so
+  // recovery can be canceled into the next attack. hasHitThisAttack stops the
+  // same move's active window from counting more than once.
+  onAttackConnected(assistMode: boolean) {
+    this.comboHits += 1;
+    this.comboDropTimer = COMBO_DROP_FRAMES;
+    if (this.state === 'attack_weak' && this.comboHits < COMBO_MAX_HITS) {
+      this.cancelWindow = assistMode ? COMBO_CANCEL_WINDOW_ASSIST : COMBO_CANCEL_WINDOW;
+    } else {
+      this.cancelWindow = 0;
+    }
   }
 
   // Type-flavored super variants (numbers, not just the callout name) - kept
@@ -355,6 +417,7 @@ export class Fighter {
     this.stateTimer = THROW_STARTUP + THROW_ACTIVE_FRAMES + THROW_RECOVERY;
     this.attackActive = false;
     this.hitbox = null;
+    this.hasHitThisAttack = false;
     this.redraw();
   }
 
@@ -398,6 +461,15 @@ export class Fighter {
 
   tickState() {
     if (this.invuln > 0) this.invuln -= 1;
+
+    // ギアラッシュ timers: the cancel window is short and closes on its own if
+    // unused; the drop timer ends the chain (resets the hit count) once enough
+    // idle frames pass without landing a follow-up.
+    if (this.cancelWindow > 0) this.cancelWindow -= 1;
+    if (this.comboDropTimer > 0) {
+      this.comboDropTimer -= 1;
+      if (this.comboDropTimer <= 0) this.comboHits = 0;
+    }
 
     if (this.state === 'shift') {
       this.stateTimer -= 1;
@@ -563,6 +635,17 @@ export class Fighter {
     const gear = GEAR_TABLE[this.gear];
     const base = this.state === 'attack_strong' ? BASE_DAMAGE_STRONG : BASE_DAMAGE_WEAK;
     let dmg = base * gear.damageMul;
+    // ギアラッシュ proration: later hits in a chain do less, so a low-gear rush
+    // and a heavy high-gear single hit stay in the same ballpark. comboHits is
+    // the PRE-increment count here (onAttackConnected runs after damage), so hit
+    // 1 indexes [0]=1.0, hit 2 -> [1]=0.8, hit 3 -> [2]=0.6.
+    dmg *= COMBO_PRORATION[Math.min(this.comboHits, COMBO_PRORATION.length - 1)];
+    // RPM finisher payoff: a strong that ends a chain (comboHits>0 means prior
+    // hits landed) gets +15% per prior hit, so the chain-ender clearly beats a
+    // lone poke. A lone strong from neutral (comboHits==0) is unaffected.
+    if (this.state === 'attack_strong' && this.comboHits > 0) {
+      dmg *= 1 + COMBO_FINISHER_RUSH * this.comboHits;
+    }
     if (this.perfectShiftBonus) {
       dmg *= 1.2;
       this.perfectShiftBonus = false;
@@ -632,6 +715,10 @@ export class Fighter {
     this.invuln = HIT_INVULN_FRAMES;
     this.hitbox = null;
     this.attackActive = false;
+    // Getting hit interrupts your own chain.
+    this.comboHits = 0;
+    this.cancelWindow = 0;
+    this.comboDropTimer = 0;
 
     return dmg;
   }

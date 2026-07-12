@@ -234,18 +234,26 @@ export class BattleScene extends Phaser.Scene {
 
   private checkHit(attacker: Fighter, defender: Fighter) {
     if (!attacker.attackActive || !attacker.hitbox) return;
+    // A single move connects only once, even though its hitbox stays active for
+    // several frames - this (not a long defender invuln) is what stops multi-hits,
+    // which is what frees the short invuln up to allow combos between moves.
+    if (attacker.hasHitThisAttack) return;
 
     const isThrow = attacker.state === 'throw';
     if (isThrow ? !defender.isThrowable() : !defender.isVulnerable()) return;
 
     const body = new Phaser.Geom.Rectangle(defender.x - 14, defender.y - 40, 28, 40);
     if (!Phaser.Geom.Intersects.RectangleToRectangle(attacker.hitbox, body)) return;
+    attacker.hasHitThisAttack = true;
 
     const isSuper = attacker.state === 'super';
     const wasGuarding = defender.state === 'block' || defender.state === 'blockstun';
     // Throws bypass guard entirely - that's the whole point of adding them
-    // (holding block forever stops being a free win).
-    const isGuarded = !isThrow && defender.state === 'block';
+    // (holding block forever stops being a free win). blockstun counts as still
+    // guarding so a fast follow-up during the block flinch is blocked (chip),
+    // not treated as a clean hit - otherwise a blockstring would break guard for
+    // free and even start a bogus combo on a defender who never stopped blocking.
+    const isGuarded = !isThrow && (defender.state === 'block' || defender.state === 'blockstun');
     const isShiftHit = defender.isShifting();
     // Supers crush guard unconditionally instead of just chipping through it -
     // reuses the existing guard-break math in Fighter.takeDamage() by zeroing
@@ -258,6 +266,18 @@ export class BattleScene extends Phaser.Scene {
     if (dmg > 0) {
       attacker.onHitLanded();
       defender.onDamageTaken(dmg);
+
+      // ギアラッシュ combo bookkeeping: only clean normal hits (not guarded,
+      // super, or throw) advance the chain and open the cancel window. A blocked
+      // normal breaks the attacker's chain (blockstrings aren't a combo here).
+      const isNormal = !isSuper && !isThrow;
+      if (isNormal && !isGuarded) {
+        attacker.onAttackConnected(this.assistMode);
+        if (attacker.comboHits >= 2) this.hud.showCombo(attacker.comboHits);
+      } else if (isNormal && isGuarded) {
+        attacker.comboHits = 0;
+        attacker.cancelWindow = 0;
+      }
 
       const isStrong = attacker.state === 'attack_strong' || isSuper;
 
@@ -275,9 +295,13 @@ export class BattleScene extends Phaser.Scene {
       if (isSuper && attacker.getMechType() === 'speed') knockback += KNOCKBACK_SPEED_SUPER_BONUS;
       defender.applyKnockback(attacker.facing * knockback);
 
-      this.gameFeel.applyHitstop(isSuper ? 14 : isThrow ? 6 : isStrong ? 8 : 4);
+      // Meatier hitstop than before (weak 4->7, strong 8->11) to sell impact,
+      // with a couple extra frames deeper into a combo so each successive hit
+      // lands harder - the escalating "pause" is a big part of the rush feel.
+      const comboPunch = Math.min(attacker.comboHits, 3);
+      this.gameFeel.applyHitstop((isSuper ? 16 : isThrow ? 8 : isStrong ? 11 : 7) + comboPunch);
       this.gameFeel.applyShake(isSuper ? 7 : isThrow ? 3 : isStrong ? 4 : 2, isSuper ? 16 : isThrow ? 6 : isStrong ? 8 : 4);
-      this.gameFeel.spawnHitSpark(defender.x, defender.y - 20);
+      this.gameFeel.spawnHitSpark(defender.x, defender.y - 20, isStrong);
       spawnMechanismOverlay(
         this, attacker.x, attacker.y - 30,
         isThrow ? 'clamp' : isStrong ? 'lever-crank' : 'slider-crank',

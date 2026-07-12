@@ -21,6 +21,8 @@ export class BattleHUD {
   private theoryText!: Phaser.GameObjects.Text;
   private hintText!: Phaser.GameObjects.Text;
   private meshGlow!: Phaser.GameObjects.Graphics;
+  private comboPopup?: Phaser.GameObjects.Text;
+  private comboFadeTween?: Phaser.Tweens.Tween;
   private scene: Phaser.Scene;
 
   constructor(scene: Phaser.Scene) {
@@ -119,6 +121,27 @@ export class BattleHUD {
     });
   }
 
+  // ギアラッシュ hit counter - the core juice of the combo system. One persistent
+  // popup that gets re-punched (rescaled) and re-labeled on every successive hit,
+  // rather than stacking a new object per hit, so a 2->3 chain reads as one
+  // growing counter. Colour ramps hotter as the chain climbs.
+  showCombo(hits: number) {
+    if (!this.comboPopup) {
+      this.comboPopup = this.scene.add.text(GAME_WIDTH / 2, 88, '', {
+        fontSize: '20px', color: '#ffee44', fontFamily: PIXEL_FONT, fontStyle: 'bold',
+        align: 'center', stroke: '#552200', strokeThickness: 4,
+      }).setOrigin(0.5).setDepth(215);
+    }
+    const color = hits >= 3 ? '#ff8844' : '#ffee44';
+    this.comboPopup.setText(`${hits} ヒット！`).setColor(color).setVisible(true).setAlpha(1).setScale(1.6);
+    this.scene.tweens.add({ targets: this.comboPopup, scale: 1, duration: 160, ease: 'Back.Out' });
+    this.comboFadeTween?.remove();
+    this.comboFadeTween = this.scene.tweens.add({
+      targets: this.comboPopup, alpha: 0, delay: 650, duration: 300,
+      onComplete: () => this.comboPopup?.setVisible(false),
+    });
+  }
+
   // Announces a super the instant it activates (not when/if it connects) -
   // a callout like SF2's flash, independent of the one-per-match THEORY BONUS popup.
   showSuperPopup(name: string) {
@@ -147,6 +170,9 @@ export class BattleHUD {
   }
 
   destroy() {
+    // comboPopup lives outside the container (higher depth), so clean it up explicitly.
+    this.comboFadeTween?.remove();
+    this.comboPopup?.destroy();
     this.container.destroy();
   }
 }
