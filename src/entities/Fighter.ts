@@ -64,7 +64,6 @@ export class Fighter {
   private walkFrames: string[];
   private walkFrameIndex = 0;
   private walkFrameTimer = 0;
-  private walkFrameDir: 1 | -1 = 1;
   // Drives a small vertical bob while walking - independent of walkFrameTimer
   // so single-frame walkers (no extracted walk cycle) still get a bounce
   // instead of sliding flat across the ground like a static cutout.
@@ -172,10 +171,11 @@ export class Fighter {
     this.walkFrameTimer += 1;
     if (this.walkFrameTimer >= WALK_FRAME_INTERVAL) {
       this.walkFrameTimer = 0;
-      this.walkFrameIndex += this.walkFrameDir;
-      const last = this.walkFrames.length - 1;
-      if (this.walkFrameIndex >= last) { this.walkFrameIndex = last; this.walkFrameDir = -1; }
-      else if (this.walkFrameIndex <= 0) { this.walkFrameIndex = 0; this.walkFrameDir = 1; }
+      // Loop the cycle (0->1->..->N-1->0). Genuine walk-cycle art is authored to
+      // loop; ping-ponging it would run the leg motion forwards then backwards
+      // (a shuffle). For a 2-frame set (e.g. ganrock) loop and ping-pong are
+      // identical, so this is a no-op there.
+      this.walkFrameIndex = (this.walkFrameIndex + 1) % this.walkFrames.length;
     }
     return this.walkFrames[this.walkFrameIndex];
   }
@@ -191,7 +191,6 @@ export class Fighter {
     } else {
       this.walkFrameIndex = 0;
       this.walkFrameTimer = 0;
-      this.walkFrameDir = 1;
       this.walkBobTimer = 0;
       textureKey = `${this.id}_${pose}`;
     }

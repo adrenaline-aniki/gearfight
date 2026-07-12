@@ -131,6 +131,7 @@ export const ALL_SPRITE_FIGHTERS = [...SPRITE_FIGHTERS, ...PROCEDURAL_FIGHTERS] 
 // them instead). Ganrock's two frames are a real alternating pair and stay.
 export const SPRITE_WALK_FRAME_COUNT: Partial<Record<(typeof ALL_SPRITE_FIGHTERS)[number], number>> = {
   ganrock: 2,
+  wizel: 4, // genuine 4-frame AI-generated walk cycle (2026-07-12)
 };
 export const WALK_FRAME_INTERVAL = 6; // game ticks per walk-cycle frame (60fps / 6 = 10fps)
 
