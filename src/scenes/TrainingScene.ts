@@ -40,6 +40,11 @@ export class TrainingScene extends Phaser.Scene {
   // touch state
   private touchHold: RawHold = { left: false, right: false, up: false, down: false };
   private touchPress = { light: false, heavy: false, special: false, gearUp: false, gearDown: false };
+  // Hold buttons are hit-tested against ALL active pointers every pointer event
+  // (down/move/up), so a hold reliably RELEASES the instant no finger is on it -
+  // Phaser's per-object pointerup/pointerout is unreliable for touch and left the
+  // "walk right forever / stuck jumping" holds latched on.
+  private holdButtons: { x: number; y: number; r: number; set: (v: boolean) => void }[] = [];
 
   constructor() {
     super('TrainingScene');
@@ -95,34 +100,63 @@ export class TrainingScene extends Phaser.Scene {
   // Minimal on-screen touch controls: a d-pad-ish left cluster and attack/gear
   // buttons on the right. Enough to feel the engine on a phone; the polished
   // car-shifter layout comes once the engine is locked.
+  //
+  // HOLD buttons (movement) register their circle in holdButtons and are
+  // recomputed from every active pointer on each pointer event, so they release
+  // cleanly. PRESS buttons (jump/attack/gear) fire a one-shot pulse on pointerdown.
   private setupTouch() {
-    const mk = (x: number, y: number, r: number, label: string, color: number,
-                onDown: () => void, onUp?: () => void) => {
+    const drawBtn = (x: number, y: number, r: number, label: string, color: number) => {
       const g = this.add.graphics();
       g.fillStyle(color, 0.28); g.fillCircle(x, y, r);
       g.lineStyle(1, color, 0.7); g.strokeCircle(x, y, r);
-      const t = this.add.text(x, y, label, { fontFamily: PIXEL_FONT, fontSize: '10px', color: '#ffffff' })
+      this.add.text(x, y, label, { fontFamily: PIXEL_FONT, fontSize: '10px', color: '#ffffff' })
         .setOrigin(0.5).setResolution(2);
-      const zone = this.add.zone(x, y, r * 2, r * 2).setCircleDropZone(r).setInteractive();
-      zone.on('pointerdown', onDown);
-      if (onUp) { zone.on('pointerup', onUp); zone.on('pointerout', onUp); }
-      void t;
-      return g;
     };
+    const hold = (x: number, y: number, r: number, label: string, color: number, set: (v: boolean) => void) => {
+      drawBtn(x, y, r, label, color);
+      this.holdButtons.push({ x, y, r: r + 3, set }); // +3 slop for fat fingers
+    };
+    const press = (x: number, y: number, r: number, label: string, color: number, fire: () => void) => {
+      drawBtn(x, y, r, label, color);
+      const zone = this.add.zone(x, y, (r + 3) * 2, (r + 3) * 2).setInteractive();
+      zone.on('pointerdown', fire);
+    };
+
     const by = GAME_HEIGHT - 46;
-    // movement
-    mk(20, by, 12, '←', 0x88aacc, () => { this.touchHold.left = true; }, () => { this.touchHold.left = false; });
-    mk(48, by, 12, '→', 0x88aacc, () => { this.touchHold.right = true; }, () => { this.touchHold.right = false; });
-    mk(34, by - 24, 12, '↑', 0x88cc88, () => { this.touchHold.up = true; },
-       () => { this.touchHold.up = false; });
-    mk(34, by + 20, 12, '↓', 0x88aacc, () => { this.touchHold.down = true; }, () => { this.touchHold.down = false; });
+    // movement (hold)
+    hold(20, by, 12, '←', 0x88aacc, (v) => { this.touchHold.left = v; });
+    hold(48, by, 12, '→', 0x88aacc, (v) => { this.touchHold.right = v; });
+    hold(34, by + 20, 12, '↓', 0x88aacc, (v) => { this.touchHold.down = v; });
+    // jump (one-shot press, so holding doesn't re-jump on every landing)
+    press(34, by - 24, 12, '↑', 0x88cc88, () => { this.doJump = true; });
     // attacks
-    mk(GAME_WIDTH - 22, by, 13, '弱', 0xffdd66, () => { this.touchPress.light = true; });
-    mk(GAME_WIDTH - 52, by, 13, '強', 0xff8866, () => { this.touchPress.heavy = true; });
+    press(GAME_WIDTH - 22, by, 13, '弱', 0xffdd66, () => { this.touchPress.light = true; });
+    press(GAME_WIDTH - 52, by, 13, '強', 0xff8866, () => { this.touchPress.heavy = true; });
     // gear
-    mk(GAME_WIDTH - 22, by - 30, 11, 'G+', 0x66ddaa, () => { this.touchPress.gearUp = true; });
-    mk(GAME_WIDTH - 52, by - 30, 11, 'G-', 0x66ddaa, () => { this.touchPress.gearDown = true; });
+    press(GAME_WIDTH - 22, by - 30, 11, 'G+', 0x66ddaa, () => { this.touchPress.gearUp = true; });
+    press(GAME_WIDTH - 52, by - 30, 11, 'G-', 0x66ddaa, () => { this.touchPress.gearDown = true; });
+
+    // Recompute all hold buttons from every active pointer on any pointer event.
+    const recompute = () => {
+      const pointers = [this.input.pointer1, this.input.pointer2, this.input.pointer3, this.input.pointer4]
+        .filter((p): p is Phaser.Input.Pointer => !!p && p.isDown);
+      for (const b of this.holdButtons) {
+        let on = false;
+        for (const p of pointers) {
+          const dx = p.x - b.x, dy = p.y - b.y;
+          if (dx * dx + dy * dy <= b.r * b.r) { on = true; break; }
+        }
+        b.set(on);
+      }
+    };
+    this.input.on('pointerdown', recompute);
+    this.input.on('pointermove', recompute);
+    this.input.on('pointerup', recompute);
+    this.input.on('pointerupoutside', recompute);
   }
+
+  // one-shot jump latch set by the touch jump button
+  private doJump = false;
 
   // ---- input plumbing ----------------------------------------------------
 
@@ -163,6 +197,7 @@ export class TrainingScene extends Phaser.Scene {
   private clearPresses() {
     this.touchPress.light = this.touchPress.heavy = this.touchPress.special = false;
     this.touchPress.gearUp = this.touchPress.gearDown = false;
+    this.doJump = false;
   }
 
   private buildInput(f: CombatFighter, who: 'p1' | 'p2', firstSub: boolean): CommandInput {
@@ -171,7 +206,7 @@ export class TrainingScene extends Phaser.Scene {
       ? {
           left: this.keys.left.isDown || this.touchHold.left,
           right: this.keys.right.isDown || this.touchHold.right,
-          up: this.keys.up.isDown || this.touchHold.up,
+          up: this.keys.up.isDown, // touch jump is a one-shot (doJump), not a hold
           down: this.keys.down.isDown || this.touchHold.down,
         }
       : {
@@ -185,7 +220,9 @@ export class TrainingScene extends Phaser.Scene {
     // absolute x -> facing-relative forward
     const absX = hold.right ? 1 : hold.left ? -1 : 0;
     const fwd = absX * f.facing;
-    const vert = hold.up ? 1 : hold.down ? -1 : 0;
+    // jump: keyboard up (held) or the touch one-shot, applied on the first sub-step
+    const jumpNow = hold.up || (who === 'p1' && firstSub && this.doJump);
+    const vert = jumpNow ? 1 : hold.down ? -1 : 0;
 
     // "just pressed" only applies on the first sub-step of a render frame; on
     // later sub-steps it's already been consumed (buffering handles leniency).
