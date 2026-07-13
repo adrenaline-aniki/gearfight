@@ -44,7 +44,7 @@ export class TrainingScene extends Phaser.Scene {
   // (down/move/up), so a hold reliably RELEASES the instant no finger is on it -
   // Phaser's per-object pointerup/pointerout is unreliable for touch and left the
   // "walk right forever / stuck jumping" holds latched on.
-  private holdButtons: { x: number; y: number; r: number; set: (v: boolean) => void }[] = [];
+  private holdButtons: { x: number; y: number; r: number; color: number; g: Phaser.GameObjects.Graphics; set: (v: boolean) => void }[] = [];
 
   constructor() {
     super('TrainingScene');
@@ -72,7 +72,7 @@ export class TrainingScene extends Phaser.Scene {
     this.hudP2 = this.add.text(GAME_WIDTH - 4, 26, '', { fontFamily: PIXEL_FONT, fontSize: '10px', color: '#ffb38f' })
       .setOrigin(1, 0).setResolution(2);
 
-    this.add.text(GAME_WIDTH / 2, 4, 'TRAINING — 箱表示', { fontFamily: PIXEL_FONT, fontSize: '10px', color: '#ffffff' })
+    this.add.text(GAME_WIDTH / 2, 4, 'TRAINING — 箱表示 v3', { fontFamily: PIXEL_FONT, fontSize: '10px', color: '#ffffff' })
       .setOrigin(0.5, 0).setResolution(2);
 
     this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 10,
@@ -111,10 +111,11 @@ export class TrainingScene extends Phaser.Scene {
       g.lineStyle(1, color, 0.7); g.strokeCircle(x, y, r);
       this.add.text(x, y, label, { fontFamily: PIXEL_FONT, fontSize: '10px', color: '#ffffff' })
         .setOrigin(0.5).setResolution(2);
+      return g;
     };
     const hold = (x: number, y: number, r: number, label: string, color: number, set: (v: boolean) => void) => {
-      drawBtn(x, y, r, label, color);
-      this.holdButtons.push({ x, y, r: r + 3, set }); // +3 slop for fat fingers
+      const g = drawBtn(x, y, r, label, color);
+      this.holdButtons.push({ x, y, r: r + 3, color, g, set }); // +3 slop for fat fingers
     };
     const press = (x: number, y: number, r: number, label: string, color: number, fire: () => void) => {
       drawBtn(x, y, r, label, color);
@@ -136,23 +137,29 @@ export class TrainingScene extends Phaser.Scene {
     press(GAME_WIDTH - 22, by - 30, 11, 'G+', 0x66ddaa, () => { this.touchPress.gearUp = true; });
     press(GAME_WIDTH - 52, by - 30, 11, 'G-', 0x66ddaa, () => { this.touchPress.gearDown = true; });
 
-    // Recompute all hold buttons from every active pointer on any pointer event.
-    const recompute = () => {
-      const pointers = [this.input.pointer1, this.input.pointer2, this.input.pointer3, this.input.pointer4]
-        .filter((p): p is Phaser.Input.Pointer => !!p && p.isDown);
-      for (const b of this.holdButtons) {
-        let on = false;
-        for (const p of pointers) {
-          const dx = p.x - b.x, dy = p.y - b.y;
-          if (dx * dx + dy * dy <= b.r * b.r) { on = true; break; }
-        }
-        b.set(on);
+  }
+
+  // Recompute every hold button EVERY FRAME from the live pointer state (not just
+  // on pointer events - iOS Safari can drop the release event, which left the
+  // "walk right forever / stuck jumping" holds latched). Polling the manager's
+  // pointer array each frame means a lifted finger clears the hold within one
+  // frame no matter which DOM events did or didn't fire.
+  private pollHolds() {
+    const mgr = this.input.manager;
+    for (const b of this.holdButtons) {
+      let on = false;
+      for (const p of mgr.pointers) {
+        if (!p.isDown) continue;
+        const dx = p.x - b.x, dy = p.y - b.y;
+        if (dx * dx + dy * dy <= b.r * b.r) { on = true; break; }
       }
-    };
-    this.input.on('pointerdown', recompute);
-    this.input.on('pointermove', recompute);
-    this.input.on('pointerup', recompute);
-    this.input.on('pointerupoutside', recompute);
+      b.set(on);
+      // visual feedback: lit while held so a "stuck" hold is obvious at a glance
+      const rr = b.r - 3;
+      b.g.clear();
+      b.g.fillStyle(b.color, on ? 0.8 : 0.28); b.g.fillCircle(b.x, b.y, rr);
+      b.g.lineStyle(1, b.color, on ? 1 : 0.7); b.g.strokeCircle(b.x, b.y, rr);
+    }
   }
 
   // one-shot jump latch set by the touch jump button
@@ -161,6 +168,7 @@ export class TrainingScene extends Phaser.Scene {
   // ---- input plumbing ----------------------------------------------------
 
   update(_time: number, delta: number) {
+    this.pollHolds();
     this.latchPresses();
 
     this.accumulator += Math.min(delta, 100); // clamp huge frame gaps
