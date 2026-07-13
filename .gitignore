@@ -25,3 +25,6 @@ dist-ssr
 *.sln
 *.sw?
 public/sprites/A68476F5-B99A-44B7-ACCF-0E3F281D51BA 2.PNG
+
+# Session scratchpad (throwaway test/probe scripts)
+scratchpad/

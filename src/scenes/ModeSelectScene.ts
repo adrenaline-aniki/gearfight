@@ -30,6 +30,10 @@ export class ModeSelectScene extends Phaser.Scene {
       this.scene.start('DialogueScene', { lines: introLines, nextScene: 'BattleScene', nextData: config });
     const modes: { label: string; color?: string; action: () => void }[] = [
       {
+        label: '★ 新戦闘トレーニング（開発中）', color: '#66ffcc',
+        action: () => this.scene.start('TrainingScene'),
+      },
+      {
         label: 'オープニング（物語の冒頭）', color: '#ffdd44',
         action: () => this.scene.start('DialogueScene', { lines: OPENING_DIALOGUE, nextScene: 'ModeSelectScene' }),
       },

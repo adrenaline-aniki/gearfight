@@ -8,6 +8,7 @@ import { ModeSelectScene } from './scenes/ModeSelectScene';
 import { DialogueScene } from './scenes/DialogueScene';
 import { GarageScene } from './scenes/GarageScene';
 import { BattleScene } from './scenes/BattleScene';
+import { TrainingScene } from './scenes/TrainingScene';
 
 // A plain CSS `url(/fonts/...)` can't pick up Vite's `base` (needed so the
 // GitHub Pages build target, which serves under /gearfight/, still finds its
@@ -43,7 +44,7 @@ const config: Phaser.Types.Core.GameConfig = {
     width: GAME_WIDTH,
     height: GAME_HEIGHT,
   },
-  scene: [BootScene, TitleScene, ModeSelectScene, DialogueScene, GarageScene, BattleScene],
+  scene: [BootScene, TitleScene, ModeSelectScene, DialogueScene, GarageScene, BattleScene, TrainingScene],
   physics: {
     default: 'arcade',
     arcade: { gravity: { x: 0, y: 0 }, debug: false },
