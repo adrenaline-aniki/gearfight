@@ -8,7 +8,7 @@
 // layer never mirrors anything by hand.
 
 import type { CommandInput, WorldBox, HitProps, Box } from './types';
-import { MOVES, STAND_HURTBOX, CROUCH_HURTBOX, PUSHBOX, PUSHBOX_CROUCH } from './moves';
+import type { CharacterDef } from './characterDef';
 
 // Local gear table for the rebuild. Gear is the one systemic knob: low gear =
 // fast + weak + cool, high gear = slow + strong + guard-breaking + hot. Unlike
@@ -36,12 +36,11 @@ export type FighterPhase =
   | 'idle' | 'walk' | 'crouch' | 'jumpsquat' | 'air'
   | 'attack' | 'block' | 'hitstun' | 'blockstun' | 'knockdown';
 
-// Tunables (world px, 60fps frames). Kept here so the whole engine is one place.
-const WALK_SPEED = 1.5;         // base px/frame at gear3
-const JUMP_VY = 6.2;            // initial up velocity
+// Universal physics/rules (not per-character; the same for every fighter). The
+// per-character numbers - walk speed, jump strength, health, gears, moves, boxes
+// - all live in the CharacterDef the author edits.
 const GRAVITY = 0.42;           // px/frame^2
 const JUMPSQUAT = 3;            // grounded frames before leaving the ground
-const MAX_HEALTH = 1000;
 const MAX_METER = 100;
 const KNOCKDOWN_FRAMES = 26;
 const WAKEUP_INVULN = 6;
@@ -64,7 +63,7 @@ export class CombatFighter {
   vy = 0;
   facing: 1 | -1;
 
-  health = MAX_HEALTH;
+  health: number;
   meter = 0;
   gear = 1;
   heat = 0;
@@ -85,13 +84,17 @@ export class CombatFighter {
   private bufHeavy = 0;
   private bufSpecial = 0;
 
-  constructor(x: number, facing: 1 | -1) {
+  readonly def: CharacterDef;
+
+  constructor(x: number, facing: 1 | -1, def: CharacterDef) {
     this.x = x;
     this.facing = facing;
+    this.def = def;
+    this.health = def.health;
   }
 
   get gearSpec(): GearSpec {
-    return COMBAT_GEARS[this.gear];
+    return this.def.gears[this.gear];
   }
 
   get dead(): boolean {
@@ -229,7 +232,7 @@ export class CombatFighter {
     // Walk.
     if (input.fwd !== 0) {
       const dir = input.fwd > 0 ? this.facing : -this.facing;
-      this.vx = dir * WALK_SPEED * this.gearSpec.walkMul;
+      this.vx = dir * this.def.walkSpeed * this.gearSpec.walkMul;
       this.x += this.vx;
       this.setPhase('walk');
     } else {
@@ -240,10 +243,10 @@ export class CombatFighter {
 
   private stepJumpsquat(input: CommandInput) {
     if (this.phaseFrame >= JUMPSQUAT - 1) {
-      this.vy = JUMP_VY;
+      this.vy = this.def.jumpVy;
       // preserve any held horizontal direction as air momentum
       const h = input.fwd > 0 ? this.facing : input.fwd < 0 ? -this.facing : 0;
-      this.vx = h * WALK_SPEED * 0.9;
+      this.vx = h * this.def.walkSpeed * 0.9;
       this.enterPhase('air');
     }
   }
@@ -254,7 +257,7 @@ export class CombatFighter {
   }
 
   private stepAttack(input: CommandInput) {
-    const m = MOVES[this.move!];
+    const m = this.def.moves[this.move!];
     const su = this.scaledStartup(m.startup);
     const rec = this.scaledRecovery(m.recovery);
     const total = su + m.active + rec;
@@ -307,7 +310,7 @@ export class CombatFighter {
   // ---- move / phase helpers ---------------------------------------------
 
   private startMove(id: string) {
-    const m = MOVES[id];
+    const m = this.def.moves[id];
     if (m.crouch && !(this.phase === 'crouch')) {
       // crouch normals still fire from neutral-with-down; allow it
     }
@@ -354,20 +357,20 @@ export class CombatFighter {
   /** Is the current move's hitbox live this frame? */
   isAttackActive(): boolean {
     if (this.phase !== 'attack' || !this.move) return false;
-    const m = MOVES[this.move];
+    const m = this.def.moves[this.move];
     const su = this.scaledStartup(m.startup);
     return this.phaseFrame >= su && this.phaseFrame < su + m.active;
   }
 
   currentHit(): HitProps | null {
     if (!this.move) return null;
-    return MOVES[this.move].hit;
+    return this.def.moves[this.move].hit;
   }
 
   /** Damage of the current move after gear scaling. */
   scaledDamage(): number {
     if (!this.move) return 0;
-    return Math.round(MOVES[this.move].hit.damage * this.gearSpec.damageMul);
+    return Math.round(this.def.moves[this.move].hit.damage * this.gearSpec.damageMul);
   }
 
   // ---- boxes (world space) ----------------------------------------------
@@ -386,21 +389,21 @@ export class CombatFighter {
 
   getHitboxWorld(): WorldBox | null {
     if (!this.isAttackActive() || !this.move) return null;
-    return this.toWorld(MOVES[this.move].hitbox);
+    return this.toWorld(this.def.moves[this.move].hitbox);
   }
 
   getHurtboxesWorld(): WorldBox[] {
     if (this.phase === 'knockdown') return [];
     if (this.move) {
-      const m = MOVES[this.move];
+      const m = this.def.moves[this.move];
       if (m.hurtboxes) return m.hurtboxes.map((b) => this.toWorld(b));
     }
-    const base = this.phase === 'crouch' ? CROUCH_HURTBOX : STAND_HURTBOX;
+    const base = this.phase === 'crouch' ? this.def.crouchHurtbox : this.def.standHurtbox;
     return [this.toWorld(base)];
   }
 
   getPushbox(): WorldBox {
-    const base = this.phase === 'crouch' ? PUSHBOX_CROUCH : PUSHBOX;
+    const base = this.phase === 'crouch' ? this.def.crouchPushbox : this.def.pushbox;
     return this.toWorld(base);
   }
 

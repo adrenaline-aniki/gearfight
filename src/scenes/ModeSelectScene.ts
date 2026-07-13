@@ -34,6 +34,10 @@ export class ModeSelectScene extends Phaser.Scene {
         action: () => this.scene.start('TrainingScene'),
       },
       {
+        label: '★ 格ツク エディタ（技を作る）', color: '#66ffcc',
+        action: () => this.scene.start('EditorScene'),
+      },
+      {
         label: 'オープニング（物語の冒頭）', color: '#ffdd44',
         action: () => this.scene.start('DialogueScene', { lines: OPENING_DIALOGUE, nextScene: 'ModeSelectScene' }),
       },

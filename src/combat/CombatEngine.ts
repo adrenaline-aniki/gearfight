@@ -7,6 +7,8 @@
 import { CombatFighter } from './CombatFighter';
 import type { CommandInput } from './types';
 import { EMPTY_COMMAND } from './types';
+import type { CharacterDef } from './characterDef';
+import { makeDefaultCharacter } from './characterDef';
 
 export interface HitEvent {
   attacker: CombatFighter;
@@ -28,9 +30,14 @@ export class CombatEngine {
   frame = 0;
   lastHits: HitEvent[] = [];
 
-  constructor(p1Start = 130, p2Start = 254) {
-    this.p1 = new CombatFighter(p1Start, 1);
-    this.p2 = new CombatFighter(p2Start, -1);
+  constructor(
+    def1: CharacterDef = makeDefaultCharacter('p1'),
+    def2: CharacterDef = makeDefaultCharacter('p2'),
+    p1Start = 130,
+    p2Start = 254,
+  ) {
+    this.p1 = new CombatFighter(p1Start, 1, def1);
+    this.p2 = new CombatFighter(p2Start, -1, def2);
   }
 
   /** Advance one fixed frame with each side's already-facing-resolved input. */

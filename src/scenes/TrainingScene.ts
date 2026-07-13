@@ -3,6 +3,8 @@ import { GAME_WIDTH, GAME_HEIGHT, GROUND_Y, PIXEL_FONT } from '../config/constan
 import { CombatEngine } from '../combat/CombatEngine';
 import { CombatFighter } from '../combat/CombatFighter';
 import { EMPTY_COMMAND, type CommandInput } from '../combat/types';
+import { makeDefaultCharacter, cloneCharacter, type CharacterDef } from '../combat/characterDef';
+import { loadCharacter } from '../combat/characterStore';
 
 // GEAR FIGHT — combat rebuild (Phase 1), presentation layer.
 //
@@ -46,13 +48,25 @@ export class TrainingScene extends Phaser.Scene {
   // "walk right forever / stuck jumping" holds latched on.
   private holdButtons: { x: number; y: number; r: number; color: number; g: Phaser.GameObjects.Graphics; set: (v: boolean) => void }[] = [];
 
+  private testDef?: CharacterDef;
+  private returnScene = 'ModeSelectScene';
+
   constructor() {
     super('TrainingScene');
   }
 
+  init(data?: { def?: CharacterDef; from?: string }) {
+    this.testDef = data?.def;
+    this.returnScene = data?.from ?? 'ModeSelectScene';
+  }
+
   create() {
     this.cameras.main.setBackgroundColor('#101820');
-    this.engine = new CombatEngine();
+    // P1 is the character under test (passed from the editor, else the saved
+    // working character); P2 is a default sparring dummy.
+    const p1def = this.testDef ?? loadCharacter();
+    const p2def = makeDefaultCharacter('dummy', 'ダミー');
+    this.engine = new CombatEngine(cloneCharacter(p1def), p2def);
     this.accumulator = 0;
 
     // ground line
@@ -82,7 +96,12 @@ export class TrainingScene extends Phaser.Scene {
     this.setupKeyboard();
     this.setupTouch();
 
-    this.input.keyboard?.on('keydown-ESC', () => this.scene.start('ModeSelectScene'));
+    this.input.keyboard?.on('keydown-ESC', () => this.scene.start(this.returnScene));
+
+    // "← 戻る" button (touch): return to editor or mode select.
+    this.add.text(4, 4, '← 戻る', { fontFamily: PIXEL_FONT, fontSize: '10px', color: '#aabbcc' })
+      .setResolution(2).setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => this.scene.start(this.returnScene));
   }
 
   private setupKeyboard() {
