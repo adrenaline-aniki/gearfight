@@ -5,7 +5,7 @@
 // activation), damage/stun/pushback, and shared hitstop. Pure logic.
 
 import { CombatFighter } from './CombatFighter';
-import type { CommandInput } from './types';
+import type { CommandInput, HitProps, WorldBox } from './types';
 import { EMPTY_COMMAND } from './types';
 import type { CharacterDef } from './characterDef';
 import { makeDefaultCharacter } from './characterDef';
@@ -16,6 +16,20 @@ export interface HitEvent {
   blocked: boolean;
   damage: number;
   guardBreak: boolean;
+  projectile?: boolean;
+}
+
+/** A live projectile in flight. Owner is 1 or 2 (which fighter fired it). */
+export interface Projectile {
+  owner: 1 | 2;
+  x: number; y: number;       // origin (feet-baseline) + box is relative
+  facing: 1 | -1;
+  box: { x: number; y: number; w: number; h: number };
+  hit: HitProps;
+  damage: number;
+  guardBreak: boolean;
+  speed: number;
+  life: number;
 }
 
 // Playfield bounds in the engine's local world (x). The scene maps these to
@@ -29,6 +43,7 @@ export class CombatEngine {
   hitstop = 0;
   frame = 0;
   lastHits: HitEvent[] = [];
+  projectiles: Projectile[] = [];
 
   constructor(
     def1: CharacterDef = makeDefaultCharacter('p1'),
@@ -56,9 +71,57 @@ export class CombatEngine {
 
     this.separate();
     this.resolveHits();
+    this.spawnProjectiles();
+    this.stepProjectiles();
     this.clampStage();
 
     this.frame++;
+  }
+
+  // ---- projectiles -------------------------------------------------------
+
+  private spawnProjectiles() {
+    for (const [f, owner] of [[this.p1, 1], [this.p2, 2]] as const) {
+      // One projectile per owner on screen at a time (classic fireball rule).
+      if (this.projectiles.some((p) => p.owner === owner)) continue;
+      const s = f.takeProjectileSpawn();
+      if (!s) continue;
+      this.projectiles.push({
+        owner, x: s.x, y: s.y, facing: s.facing,
+        box: { ...s.spec.box }, hit: s.spec.hit,
+        damage: Math.round(s.spec.hit.damage * s.gearDamageMul),
+        guardBreak: s.gearGuardBreak, speed: s.spec.speed, life: s.spec.life,
+      });
+    }
+  }
+
+  private stepProjectiles() {
+    const survivors: Projectile[] = [];
+    for (const p of this.projectiles) {
+      p.x += p.speed * p.facing;
+      p.life--;
+      const defender = p.owner === 1 ? this.p2 : this.p1;
+      const pbox = projectileWorld(p);
+      let consumed = false;
+      if (!defender.invulnActive()) {
+        for (const hurt of defender.getHurtboxesWorld()) {
+          if (overlap(pbox, hurt)) {
+            const res = defender.applyHit(p.hit, p.damage, p.facing, p.guardBreak);
+            this.hitstop = p.hit.hitstop;
+            (p.owner === 1 ? this.p1 : this.p2).addMeter(res.blocked ? 3 : 6);
+            defender.addMeter(res.blocked ? 2 : 4);
+            this.lastHits.push({
+              attacker: p.owner === 1 ? this.p1 : this.p2, defender,
+              blocked: res.blocked, damage: res.damage, guardBreak: p.guardBreak, projectile: true,
+            });
+            consumed = true;
+            break;
+          }
+        }
+      }
+      if (!consumed && p.life > 0 && p.x > 0 && p.x < 384) survivors.push(p);
+    }
+    this.projectiles = survivors;
   }
 
   /** Keep the two pushboxes from overlapping by splitting the overlap. */
@@ -88,7 +151,7 @@ export class CombatEngine {
     if (attacker.moveHasHit) return;
     const hb = attacker.getHitboxWorld();
     if (!hb) return;
-    if (defender.invuln > 0 && !defender.isBlocking()) return;
+    if (defender.invulnActive()) return;
 
     const hurts = defender.getHurtboxesWorld();
     let contact = false;
@@ -121,7 +184,16 @@ export class CombatEngine {
   }
 }
 
-function overlap(a: { xmin: number; xmax: number; ymin: number; ymax: number },
-                 b: { xmin: number; xmax: number; ymin: number; ymax: number }): boolean {
+function overlap(a: WorldBox, b: WorldBox): boolean {
   return a.xmin < b.xmax && a.xmax > b.xmin && a.ymin < b.ymax && a.ymax > b.ymin;
+}
+
+/** World-space box of a projectile (facing-normalized box -> world). */
+export function projectileWorld(p: Projectile): WorldBox {
+  const near = p.x + p.box.x * p.facing;
+  const far = p.x + (p.box.x + p.box.w) * p.facing;
+  return {
+    xmin: Math.min(near, far), xmax: Math.max(near, far),
+    ymin: p.y + p.box.y, ymax: p.y + p.box.y + p.box.h,
+  };
 }

@@ -13,14 +13,15 @@ import type { Box, MoveData } from '../combat/types';
 //
 // World<->screen matches TrainingScene: screenX = worldX, screenY = GROUND_Y - worldY.
 
-const EDIT_MOVES = ['light', 'heavy', 'crouchLight'] as const;
-const MOVE_LABEL: Record<string, string> = { light: '弱', heavy: '強', crouchLight: 'しゃがみ弱' };
+// Grounded normals the simple box-editor covers (specials with motions/projectiles
+// are authored in data for now). Labels come from each move's own `name`.
+const EDIT_MOVES = ['standLight', 'standHeavy', 'crouchLight', 'crouchHeavy'] as const;
 
 const FIGHTER_X = 96; // where the previewed fighter stands (world x)
 
 export class EditorScene extends Phaser.Scene {
   private def!: CharacterDef;
-  private moveId: string = 'light';
+  private moveId: string = 'standLight';
   private frame = 1; // 1..total, scrub position
 
   private boxGfx!: Phaser.GameObjects.Graphics;
@@ -44,7 +45,7 @@ export class EditorScene extends Phaser.Scene {
   create() {
     this.cameras.main.setBackgroundColor('#0d1420');
     this.def = loadCharacter();
-    this.moveId = 'light';
+    this.moveId = 'standLight';
     this.frame = 1;
 
     this.add.text(GAME_WIDTH / 2, 3, `格ツク エディタ — ${this.def.name}`, {
@@ -87,7 +88,7 @@ export class EditorScene extends Phaser.Scene {
   private buildTabs() {
     let x = 8;
     for (const id of EDIT_MOVES) {
-      const t = this.add.text(x, 16, MOVE_LABEL[id] ?? id, {
+      const t = this.add.text(x, 16, this.def.moves[id]?.name ?? id, {
         fontFamily: PIXEL_FONT, fontSize: '10px', color: '#ffffff',
         backgroundColor: '#223', padding: { x: 4, y: 2 },
       }).setResolution(2).setInteractive({ useHandCursor: true });
@@ -184,7 +185,7 @@ export class EditorScene extends Phaser.Scene {
       const def = JSON.parse(text) as CharacterDef;
       if (!def.moves || !def.gears) throw new Error('bad');
       this.def = def; saveCharacter(def);
-      this.moveId = 'light'; this.frame = 1;
+      this.moveId = 'standLight'; this.frame = 1;
       this.refreshTabs(); this.refreshProps(); this.redraw();
       this.showToast('読み込みました');
     } catch {

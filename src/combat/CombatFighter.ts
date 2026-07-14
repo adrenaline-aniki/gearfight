@@ -34,7 +34,16 @@ export const COMBAT_GEARS: Record<number, GearSpec> = {
 
 export type FighterPhase =
   | 'idle' | 'walk' | 'crouch' | 'jumpsquat' | 'air'
-  | 'attack' | 'block' | 'hitstun' | 'blockstun' | 'knockdown';
+  | 'attack' | 'airattack' | 'block' | 'crouchblock'
+  | 'hitstun' | 'blockstun' | 'knockdown';
+
+/** A projectile the engine should spawn (returned from CombatFighter). */
+export interface ProjectileSpawn {
+  x: number; y: number; facing: 1 | -1;
+  spec: import('./types').ProjectileSpec;
+  gearDamageMul: number;
+  gearGuardBreak: boolean;
+}
 
 // Universal physics/rules (not per-character; the same for every fighter). The
 // per-character numbers - walk speed, jump strength, health, gears, moves, boxes
@@ -47,6 +56,26 @@ const WAKEUP_INVULN = 6;
 const GEAR_SHIFT_LOCK = 8;      // frames you can't act right after a shift (the risk window)
 const GROUND_Y = 0;             // feet baseline in this local world; scene offsets it
 const BUTTON_BUFFER = 4;        // frames an attack press stays live (input leniency)
+const MOTION_WINDOW = 16;       // frames of directional history kept for motion inputs
+
+/** facing-relative (fwd,vert) -> numpad digit (6 = forward, 2 = down, etc). */
+function numpad(fwd: number, vert: number): number {
+  const col = fwd > 0 ? 1 : fwd < 0 ? -1 : 0; // forward = right column
+  const row = vert > 0 ? 1 : vert < 0 ? -1 : 0; // up = top row
+  if (row === 1) return col === -1 ? 7 : col === 0 ? 8 : 9;
+  if (row === 0) return col === -1 ? 4 : col === 0 ? 5 : 6;
+  return col === -1 ? 1 : col === 0 ? 2 : 3;
+}
+
+/** A held diagonal counts for either cardinal it contains, so 236 is lenient
+ * (e.g. a 3 read while sweeping through satisfies both the 2 and the 6 legs). */
+function dirMatches(actual: number, want: number): boolean {
+  if (actual === want) return true;
+  if (want === 2) return actual === 1 || actual === 3;   // down accepts down-diagonals
+  if (want === 6) return actual === 3 || actual === 9;    // forward accepts fwd-diagonals
+  if (want === 4) return actual === 1 || actual === 7;    // back accepts back-diagonals
+  return false;
+}
 
 export interface StepResult {
   /** a shift just completed this frame (for perfect-shift FX / heat) */
@@ -84,6 +113,14 @@ export class CombatFighter {
   private bufHeavy = 0;
   private bufSpecial = 0;
 
+  // Directional history (facing-relative numpad, newest last) for motion-input
+  // special-move detection (236 fireball, 623 dragon punch, 236236 super).
+  private dirHistory: number[] = [];
+  moveHasSpawnedProjectile = false;
+  // Touch shortcut: the scene can queue a special directly (a "必殺" button),
+  // bypassing the motion, since clean 236/623 by finger is impractical.
+  private queuedSpecial: string | null = null;
+
   readonly def: CharacterDef;
 
   constructor(x: number, facing: 1 | -1, def: CharacterDef) {
@@ -112,7 +149,8 @@ export class CombatFighter {
       this.phase === 'idle' ||
       this.phase === 'walk' ||
       this.phase === 'crouch' ||
-      this.phase === 'block'
+      this.phase === 'block' ||
+      this.phase === 'crouchblock'
     );
   }
 
@@ -164,7 +202,7 @@ export class CombatFighter {
     // frames. Only stun/air/attack phases in progress keep resolving.
     if (this.shiftLock > 0 &&
         (this.phase === 'idle' || this.phase === 'walk' ||
-         this.phase === 'crouch' || this.phase === 'block')) {
+         this.phase === 'crouch' || this.phase === 'block' || this.phase === 'crouchblock')) {
       this.vx = 0;
       this.setPhase('idle');
       this.applyGravity();
@@ -187,7 +225,11 @@ export class CombatFighter {
       case 'attack':
         this.stepAttack(input);
         break;
+      case 'airattack':
+        this.stepAirAttack(input);
+        break;
       case 'block':
+      case 'crouchblock':
         this.stepBlock(input);
         break;
       case 'hitstun':
@@ -208,25 +250,46 @@ export class CombatFighter {
     this.bufLight = input.light ? BUTTON_BUFFER : Math.max(0, this.bufLight - 1);
     this.bufHeavy = input.heavy ? BUTTON_BUFFER : Math.max(0, this.bufHeavy - 1);
     this.bufSpecial = input.special ? BUTTON_BUFFER : Math.max(0, this.bufSpecial - 1);
+    // record facing-relative numpad direction
+    const np = numpad(input.fwd, input.vert);
+    if (this.dirHistory[this.dirHistory.length - 1] !== np) this.dirHistory.push(np);
+    else this.dirHistory.push(np); // still push so timing/window stays frame-accurate
+    if (this.dirHistory.length > MOTION_WINDOW) this.dirHistory.shift();
+  }
+
+  /** Was `motion` performed within the recent input window? Ordered-subsequence
+   * match (lenient, like real fighters) with the final direction seen recently. */
+  private matchMotion(motion: string): boolean {
+    const seq = motion.split('').map((c) => +c);
+    const hist = this.dirHistory;
+    let si = 0;
+    let lastMatchIdx = -1;
+    for (let i = 0; i < hist.length && si < seq.length; i++) {
+      if (dirMatches(hist[i], seq[si])) { si++; lastMatchIdx = i; }
+    }
+    if (si < seq.length) return false;
+    // the motion must have completed near "now" (within the last few frames).
+    return hist.length - 1 - lastMatchIdx <= 3;
+  }
+
+  /** Touch shortcut entry point: queue a special to fire when next actionable. */
+  requestSpecial(id: string) {
+    this.queuedSpecial = id;
   }
 
   private canShift(): boolean {
     return this.phase === 'idle' || this.phase === 'walk' ||
-           this.phase === 'crouch' || this.phase === 'block';
+           this.phase === 'crouch' || this.phase === 'block' || this.phase === 'crouchblock';
   }
 
   private stepNeutral(input: CommandInput) {
-    // Attacks take priority (buffered so a press a few frames early still fires).
-    if (this.bufHeavy > 0) { this.bufHeavy = 0; this.startMove('heavy'); return; }
-    if (this.bufLight > 0) {
-      this.bufLight = 0;
-      this.startMove(input.vert < 0 ? 'crouchLight' : 'light');
-      return;
-    }
-    // Jump.
+    // Attacks take priority (buffered + motion inputs resolved here).
+    const move = this.resolveAttackInput(input, false);
+    if (move) { this.startMove(move); return; }
+    // Jump (up).
     if (input.vert > 0) { this.enterPhase('jumpsquat'); this.vx = 0; return; }
-    // Block (holding back). Can't turn-block into a crouch here; crouch-block later.
-    if (input.fwd < 0) { this.enterPhase('block'); this.vx = 0; return; }
+    // Guard: holding back = block. Down+back = crouch (low) block.
+    if (input.fwd < 0) { this.setPhase(input.vert < 0 ? 'crouchblock' : 'block'); this.vx = 0; return; }
     // Crouch.
     if (input.vert < 0) { this.setPhase('crouch'); this.vx = 0; return; }
     // Walk.
@@ -241,6 +304,48 @@ export class CombatFighter {
     }
   }
 
+  /** Decide which move (if any) the current buffered attack inputs request.
+   * Specials (motion or touch-queued) take priority over normals. Consumes the
+   * buffer it uses. `cancelling` = we're mid-move looking for a cancel target. */
+  private resolveAttackInput(input: CommandInput, cancelling: boolean): string | null {
+    const airborne = this.phase === 'air' || this.phase === 'airattack';
+
+    // Touch-queued special (scene shortcut): honoured on the ground only.
+    if (this.queuedSpecial && !airborne) {
+      const id = this.queuedSpecial;
+      const m = this.def.moves[id];
+      if (m && this.canAffordSpecial(m)) { this.queuedSpecial = null; return id; }
+      this.queuedSpecial = null;
+    }
+
+    // Motion specials, strongest first: super (236236) > dpunch (623) > fireball (236).
+    if (!airborne) {
+      if (this.bufSpecial > 0 && this.hasSpecial('super') && this.matchMotion('236236') &&
+          this.canAffordSpecial(this.def.moves['super'])) { this.bufSpecial = 0; return 'super'; }
+      if (this.bufHeavy > 0 && this.hasSpecial('dpunch') && this.matchMotion('623')) { this.bufHeavy = 0; return 'dpunch'; }
+      if (this.bufLight > 0 && this.hasSpecial('fireball') && this.matchMotion('236')) { this.bufLight = 0; return 'fireball'; }
+    }
+
+    // Normals.
+    if (this.bufHeavy > 0) {
+      this.bufHeavy = 0;
+      return airborne ? 'jumpHeavy' : (input.vert < 0 ? 'crouchHeavy' : 'standHeavy');
+    }
+    if (this.bufLight > 0) {
+      this.bufLight = 0;
+      return airborne ? 'jumpLight' : (input.vert < 0 ? 'crouchLight' : 'standLight');
+    }
+    void cancelling;
+    return null;
+  }
+
+  private hasSpecial(id: string): boolean {
+    return !!this.def.moves[id];
+  }
+  private canAffordSpecial(m: import('./types').MoveData): boolean {
+    return !m.meterCost || this.meter >= m.meterCost;
+  }
+
   private stepJumpsquat(input: CommandInput) {
     if (this.phaseFrame >= JUMPSQUAT - 1) {
       this.vy = this.def.jumpVy;
@@ -251,8 +356,11 @@ export class CombatFighter {
     }
   }
 
-  private stepAir(_input: CommandInput) {
+  private stepAir(input: CommandInput) {
     this.x += this.vx;
+    // one air normal per jump; starting it keeps the arc (no vx/vy reset).
+    const move = this.resolveAttackInput(input, false);
+    if (move) { this.startAirMove(move); return; }
     // landing handled in applyGravity()
   }
 
@@ -263,17 +371,12 @@ export class CombatFighter {
     const total = su + m.active + rec;
 
     // Cancel: once this move has connected (hit or block), its recovery can be
-    // cancelled into an allowed follow-up (light xx heavy). The window opens the
-    // moment it lands and stays open through recovery. Heavy is a hard finisher
-    // (no cancelInto), so chains cap naturally.
+    // cancelled into an allowed target (normal xx normal, normal xx special xx
+    // super). Window opens the moment it lands and stays open through recovery.
     if (this.moveHasHit && m.cancelInto && this.phaseFrame >= su) {
-      if (this.bufHeavy > 0 && m.cancelInto.includes('heavy')) {
-        this.bufHeavy = 0; this.startMove('heavy'); return;
-      }
-      if (this.bufLight > 0 && m.cancelInto.includes('light')) {
-        this.bufLight = 0;
-        this.startMove(input.vert < 0 ? 'crouchLight' : 'light');
-        return;
+      const next = this.resolveAttackInput(input, true);
+      if (next && m.cancelInto.includes(next) && next !== this.move) {
+        this.startMove(next); return;
       }
     }
 
@@ -282,10 +385,25 @@ export class CombatFighter {
     }
   }
 
+  private stepAirAttack(_input: CommandInput) {
+    this.x += this.vx; // keep air momentum
+    const m = this.def.moves[this.move!];
+    const total = m.startup + m.active + m.recovery;
+    // If the air move fully finishes while still airborne, return to plain air
+    // (can't act again this jump); landing is handled in applyGravity().
+    if (this.phaseFrame >= total - 1 && !this.isGrounded()) {
+      this.move = null;
+      this.setPhase('air');
+    }
+  }
+
   private stepBlock(input: CommandInput) {
+    // Hold back to keep guarding; down+back = low block, back = high block.
     if (input.fwd < 0) {
-      // keep blocking
       this.vx = 0;
+      this.setPhase(input.vert < 0 ? 'crouchblock' : 'block');
+    } else if (input.vert < 0) {
+      this.setPhase('crouch');
     } else {
       this.setPhase('idle');
     }
@@ -311,13 +429,20 @@ export class CombatFighter {
 
   private startMove(id: string) {
     const m = this.def.moves[id];
-    if (m.crouch && !(this.phase === 'crouch')) {
-      // crouch normals still fire from neutral-with-down; allow it
-    }
+    if (m.meterCost) this.meter = Math.max(0, this.meter - m.meterCost);
     this.move = id;
     this.moveHasHit = false;
+    this.moveHasSpawnedProjectile = false;
     this.vx = 0;
     this.enterPhase('attack');
+  }
+
+  /** Air normal: keeps the jump arc (does NOT reset vx/vy). */
+  private startAirMove(id: string) {
+    this.move = id;
+    this.moveHasHit = false;
+    this.moveHasSpawnedProjectile = false;
+    this.enterPhase('airattack');
   }
 
   private endMove() {
@@ -347,19 +472,51 @@ export class CombatFighter {
       if (this.y <= GROUND_Y) {
         this.y = GROUND_Y;
         this.vy = 0;
-        if (this.phase === 'air') this.setPhase('idle');
+        this.vx = 0;
+        if (this.phase === 'air' || this.phase === 'airattack') {
+          this.move = null;
+          this.setPhase('idle');
+        }
       }
     }
   }
 
   // ---- attack timing queries (for the engine's hit resolver) -------------
 
-  /** Is the current move's hitbox live this frame? */
+  /** Is the current move's hitbox live this frame? (Projectile moves have no
+   * melee hitbox - the projectile carries the hit, so they report false here.) */
   isAttackActive(): boolean {
-    if (this.phase !== 'attack' || !this.move) return false;
+    if (this.phase !== 'attack' && this.phase !== 'airattack') return false;
+    if (!this.move) return false;
     const m = this.def.moves[this.move];
-    const su = this.scaledStartup(m.startup);
+    if (m.projectile) return false;
+    const su = this.phase === 'attack' ? this.scaledStartup(m.startup) : m.startup;
     return this.phaseFrame >= su && this.phaseFrame < su + m.active;
+  }
+
+  /** Invulnerable to strikes this frame (wakeup i-frames or a move's startupInvuln). */
+  invulnActive(): boolean {
+    if (this.invuln > 0) return true;
+    if ((this.phase === 'attack' || this.phase === 'airattack') && this.move) {
+      const m = this.def.moves[this.move];
+      if (m.startupInvuln && this.phaseFrame < m.startupInvuln) return true;
+    }
+    return false;
+  }
+
+  /** If the current move should launch a projectile this frame, returns the
+   * spawn (once per activation); else null. Engine calls this each frame. */
+  takeProjectileSpawn(): ProjectileSpawn | null {
+    if (this.phase !== 'attack' || !this.move || this.moveHasSpawnedProjectile) return null;
+    const m = this.def.moves[this.move];
+    if (!m.projectile) return null;
+    const su = this.scaledStartup(m.startup);
+    if (this.phaseFrame < su) return null;
+    this.moveHasSpawnedProjectile = true;
+    return {
+      x: this.x, y: this.y, facing: this.facing, spec: m.projectile,
+      gearDamageMul: this.gearSpec.damageMul, gearGuardBreak: this.gearSpec.guardBreak,
+    };
   }
 
   currentHit(): HitProps | null {
@@ -392,47 +549,63 @@ export class CombatFighter {
     return this.toWorld(this.def.moves[this.move].hitbox);
   }
 
+  private isCrouchHeight(): boolean {
+    return this.phase === 'crouch' || this.phase === 'crouchblock';
+  }
+
   getHurtboxesWorld(): WorldBox[] {
     if (this.phase === 'knockdown') return [];
     if (this.move) {
       const m = this.def.moves[this.move];
       if (m.hurtboxes) return m.hurtboxes.map((b) => this.toWorld(b));
     }
-    const base = this.phase === 'crouch' ? this.def.crouchHurtbox : this.def.standHurtbox;
+    const base = this.isCrouchHeight() ? this.def.crouchHurtbox : this.def.standHurtbox;
     return [this.toWorld(base)];
   }
 
   getPushbox(): WorldBox {
-    const base = this.phase === 'crouch' ? this.def.crouchPushbox : this.def.pushbox;
+    const base = this.isCrouchHeight() ? this.def.crouchPushbox : this.def.pushbox;
     return this.toWorld(base);
   }
 
   isBlocking(): boolean {
-    return this.phase === 'block';
+    return this.phase === 'block' || this.phase === 'crouchblock';
   }
 
   // ---- taking a hit ------------------------------------------------------
 
   applyHit(hit: HitProps, damage: number, attackerFacing: 1 | -1, guardBreak: boolean) {
-    const blocking = this.isBlocking() && this.invuln === 0;
-    // Low must be blocked crouching — we only have standing block in this slice,
-    // so a low vs standing block still blocks (crouch-block comes next pass).
-    if (blocking && !guardBreak) {
+    const guard = hit.guard ?? 'mid';
+    const stand = this.phase === 'block';
+    const crouch = this.phase === 'crouchblock';
+    // High (overheads / jump-ins) must be stand-blocked; low must be crouch-
+    // blocked; mid blocks either way. You can't block while airborne.
+    const guarded =
+      (guard === 'mid' && (stand || crouch)) ||
+      (guard === 'high' && stand) ||
+      (guard === 'low' && crouch);
+
+    if (guarded) {
       this.stunFrames = hit.blockstun;
-      this.setPhase('blockstun');
       this.phase = 'blockstun';
       this.phaseFrame = 0;
-      const chip = hit.chip ? Math.round(damage * hit.chip) : 0;
+      // chip: the move's own chip, plus a small guard-break bleed from high gears.
+      let chipFrac = hit.chip ?? 0;
+      if (guardBreak) chipFrac = Math.max(chipFrac, 0.1);
+      const chip = Math.round(damage * chipFrac);
       this.health = Math.max(0, this.health - chip);
       this.x += attackerFacing * hit.pushbackBlock;
       return { blocked: true, damage: chip };
     }
+
     // clean hit
     this.health = Math.max(0, this.health - damage);
     this.x += attackerFacing * hit.pushbackHit;
     this.move = null;
     this.moveHasHit = false;
-    if (this.health <= 0 || (hit.launch && hit.launch > 0)) {
+    const hardKnockdown = this.health <= 0 || hit.knockdown || (hit.launch ?? 0) > 0;
+    if (hardKnockdown) {
+      if (hit.launch) this.vy = hit.launch; // small pop for feel
       this.stunFrames = KNOCKDOWN_FRAMES;
       this.phase = 'knockdown';
       this.phaseFrame = 0;

@@ -24,6 +24,11 @@ export interface WorldBox {
   xmin: number; xmax: number; ymin: number; ymax: number;
 }
 
+/** How an attack must be guarded. mid = block standing OR crouching; high = must
+ * stand-block; low = must crouch-block; overhead is just a high you often can't
+ * see coming (jump attacks / command overheads). */
+export type Guard = 'mid' | 'high' | 'low';
+
 export interface HitProps {
   damage: number;
   /** frames the victim is locked in hitstun (can't act) on a clean hit. */
@@ -35,15 +40,30 @@ export interface HitProps {
   /** horizontal shove applied to the victim, per frame, away from the attacker (world px/frame budget). */
   pushbackHit: number;
   pushbackBlock: number;
-  /** upward launch velocity (for future juggles); 0 = grounded hit. */
+  /** upward launch velocity - >0 puts the victim airborne (juggle). */
   launch?: number;
-  /** true = must be blocked crouching (low); false = high/mid. (Overheads handled later.) */
-  low?: boolean;
+  /** how it must be guarded (default 'mid'). */
+  guard?: Guard;
+  /** forces a hard knockdown on a grounded hit (sweeps, some specials). */
+  knockdown?: boolean;
   /** chip damage dealt even on block, as a fraction of damage. */
   chip?: number;
 }
 
 export type MoveId = string;
+
+/** Motion command in numpad notation, facing-relative (6 = forward, 2 = down,
+ * 3 = down-forward, etc). Undefined = a plain button normal. */
+export type Motion = '236' | '623' | '214' | '236236' | undefined;
+
+export interface ProjectileSpec {
+  /** travel speed (world px/frame, forward). */
+  speed: number;
+  box: Box;
+  hit: HitProps;
+  /** frames before it despawns if it never connects. */
+  life: number;
+}
 
 export interface MoveData {
   id: MoveId;
@@ -65,6 +85,15 @@ export interface MoveData {
   crouch?: boolean;
   /** must be airborne to perform. */
   air?: boolean;
+  /** motion command required to perform (specials/supers). */
+  motion?: Motion;
+  /** which attack button strengths trigger it as a special (for motion moves). */
+  button?: 'light' | 'heavy' | 'special';
+  /** invulnerability granted for this many frames from move start (DP reversal). */
+  startupInvuln?: number;
+  /** if set, the move launches a projectile at the start of its active window
+   * INSTEAD of swinging a melee hitbox. */
+  projectile?: ProjectileSpec;
   /** meter cost (super). */
   meterCost?: number;
   /** super-flash / callout frames on activation. */

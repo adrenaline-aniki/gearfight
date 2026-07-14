@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT, GROUND_Y, PIXEL_FONT } from '../config/constants';
-import { CombatEngine } from '../combat/CombatEngine';
+import { CombatEngine, projectileWorld } from '../combat/CombatEngine';
 import { CombatFighter } from '../combat/CombatFighter';
 import { EMPTY_COMMAND, type CommandInput } from '../combat/types';
 import { makeDefaultCharacter, cloneCharacter, type CharacterDef } from '../combat/characterDef';
@@ -90,7 +90,7 @@ export class TrainingScene extends Phaser.Scene {
       .setOrigin(0.5, 0).setResolution(2);
 
     this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 10,
-      '←→移動  ↓しゃがみ  ↑ジャンプ  Z弱  X強  Q/Eギア  ESC戻る',
+      'Z弱 X強  ↓+弱下段 足払い  236+Z波動 623+X昇龍  タッチ:波/昇/超  Q/Eギア',
       { fontFamily: PIXEL_FONT, fontSize: '10px', color: '#556677' }).setOrigin(0.5, 1).setResolution(2);
 
     this.setupKeyboard();
@@ -152,10 +152,14 @@ export class TrainingScene extends Phaser.Scene {
     // attacks
     press(GAME_WIDTH - 22, by, 13, '弱', 0xffdd66, () => { this.touchPress.light = true; });
     press(GAME_WIDTH - 52, by, 13, '強', 0xff8866, () => { this.touchPress.heavy = true; });
+    // specials (touch shortcut - clean motions by finger are impractical, so the
+    // buttons queue the special directly on the engine fighter)
+    press(GAME_WIDTH - 22, by - 28, 11, '波', 0x66ccff, () => this.engine.p1.requestSpecial('fireball'));
+    press(GAME_WIDTH - 52, by - 28, 11, '昇', 0xffaa66, () => this.engine.p1.requestSpecial('dpunch'));
+    press(GAME_WIDTH - 82, by - 28, 11, '超', 0xff66cc, () => this.engine.p1.requestSpecial('super'));
     // gear
-    press(GAME_WIDTH - 22, by - 30, 11, 'G+', 0x66ddaa, () => { this.touchPress.gearUp = true; });
-    press(GAME_WIDTH - 52, by - 30, 11, 'G-', 0x66ddaa, () => { this.touchPress.gearDown = true; });
-
+    press(GAME_WIDTH - 22, by - 54, 11, 'G+', 0x66ddaa, () => { this.touchPress.gearUp = true; });
+    press(GAME_WIDTH - 52, by - 54, 11, 'G-', 0x66ddaa, () => { this.touchPress.gearDown = true; });
   }
 
   // Recompute every hold button EVERY FRAME from the live pointer state (not just
@@ -278,6 +282,11 @@ export class TrainingScene extends Phaser.Scene {
     for (const f of [this.engine.p1, this.engine.p2]) {
       const hb = f.getHitboxWorld();
       if (hb) this.strokeWorld(g, hb, 0xff3344, 0.35, 0xff3344);
+    }
+
+    // projectiles (fireballs) - yellow squares carrying their own hitbox
+    for (const proj of this.engine.projectiles) {
+      this.strokeWorld(g, projectileWorld(proj), 0xffee44, 0.5, 0xffbb22);
     }
 
     this.drawHealth();

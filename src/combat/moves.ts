@@ -1,90 +1,98 @@
-// GEAR FIGHT — combat rebuild (Phase 1), move table (frame data).
+// GEAR FIGHT — combat rebuild, authentic move table (frame data).
 //
 // All boxes are facing-normalized (see types.ts): authored for a right-facing
 // fighter, +x forward, +y up, feet origin. The engine mirrors them for 2P.
 //
-// Frame-data philosophy (traced from SF-style feel, then bent onto the gear
-// theme): a LIGHT is a fast, safe-ish poke you can cancel into a HEAVY; a HEAVY
-// is slow, high-reward, and does NOT cancel (it's the finisher). "On block" and
-// "on hit" advantage come straight out of (recovery+active) vs. blockstun/hitstun
-// so links and frame traps are exact and testable.
-//
-// Gear does NOT live here: the same move is scaled by the fighter's current gear
-// (speed/damage) at resolve time (see CombatFighter). That keeps gear as the one
-// knob the player learns, instead of five separate move tables.
+// The set is modelled on SF/SNK footsies: fast pokes you can chain/cancel, a
+// slow committal heavy, a LOW crouch jab, a LOW sweep that knocks down, air
+// normals that hit as overheads, and two signature specials driven by motion
+// input - a fireball (projectile, keep-away/pressure) and a dragon punch
+// (invulnerable rising anti-air, huge on whiff). Gear scales all of it.
 
 import type { MoveData } from './types';
 
-// Baseline stance hurtbox (standing) - a fighter is this tall/wide when not
-// doing anything that overrides it. Feet at origin, so y starts at 0.
+// Baseline stance hurtboxes (feet at origin, y up).
 export const STAND_HURTBOX = { x: -9, y: 0, w: 18, h: 46 } as const;
 export const CROUCH_HURTBOX = { x: -9, y: 0, w: 18, h: 30 } as const;
 
-// Pushbox (the solid body used to keep fighters from overlapping). Symmetric
-// around the feet origin; never mirrored asymmetrically.
+// Pushboxes (solid body used to keep fighters from overlapping).
 export const PUSHBOX = { x: -10, y: 0, w: 20, h: 46 } as const;
 export const PUSHBOX_CROUCH = { x: -10, y: 0, w: 20, h: 30 } as const;
 
 export const MOVES: Record<string, MoveData> = {
-  // --- LIGHT: 4f startup, +2 on hit / -1 on block. Cancels into heavy. ---
-  light: {
-    id: 'light',
-    name: 'ライトギア',
-    startup: 4,
-    active: 3,
-    recovery: 7,
-    // arm extends forward at mid height.
+  // ---- GROUNDED NORMALS -------------------------------------------------
+  // Stand light: fast mid poke, chains and specials-cancels. +2 / -1.
+  standLight: {
+    id: 'standLight', name: '立ち弱', startup: 4, active: 3, recovery: 7,
     hitbox: { x: 8, y: 22, w: 22, h: 12 },
-    hit: {
-      damage: 30,
-      hitstun: 12,   // active(3)+recovery(7)=10 after first-active-frame hit -> +2
-      blockstun: 9,  // -> -1 on block
-      hitstop: 6,
-      pushbackHit: 3,
-      pushbackBlock: 4,
-    },
-    cancelInto: ['heavy'],
+    hit: { damage: 30, hitstun: 12, blockstun: 9, hitstop: 6, pushbackHit: 3, pushbackBlock: 4, guard: 'mid' },
+    cancelInto: ['standHeavy', 'crouchHeavy', 'fireball', 'dpunch', 'super'],
   },
-
-  // --- HEAVY: 9f startup, big reward, minus on block, no cancel (finisher). ---
-  heavy: {
-    id: 'heavy',
-    name: 'ヘビーギア',
-    startup: 9,
-    active: 4,
-    recovery: 16,
+  // Stand heavy: slow, committal, big reward; special/super cancel only.
+  standHeavy: {
+    id: 'standHeavy', name: '立ち強', startup: 9, active: 4, recovery: 16,
     hitbox: { x: 8, y: 20, w: 30, h: 18 },
-    hit: {
-      damage: 80,
-      hitstun: 18,
-      blockstun: 14,
-      hitstop: 10,
-      pushbackHit: 5,
-      pushbackBlock: 6,
-      launch: 0,
-    },
+    hit: { damage: 80, hitstun: 18, blockstun: 14, hitstop: 10, pushbackHit: 5, pushbackBlock: 6, guard: 'mid' },
+    cancelInto: ['fireball', 'dpunch', 'super'],
+  },
+  // Crouch light: LOW, fast, chains into sweep / stand heavy / specials.
+  crouchLight: {
+    id: 'crouchLight', name: 'しゃがみ弱', startup: 5, active: 3, recovery: 8,
+    hitbox: { x: 8, y: 6, w: 22, h: 10 }, hurtboxes: [{ x: -9, y: 0, w: 18, h: 30 }],
+    hit: { damage: 28, hitstun: 12, blockstun: 9, hitstop: 6, pushbackHit: 3, pushbackBlock: 4, guard: 'low' },
+    crouch: true, cancelInto: ['crouchHeavy', 'standHeavy', 'fireball', 'dpunch', 'super'],
+  },
+  // Crouch heavy = sweep: LOW, knocks down, no cancel, punishable on block.
+  crouchHeavy: {
+    id: 'crouchHeavy', name: '足払い', startup: 8, active: 4, recovery: 20,
+    hitbox: { x: 8, y: 4, w: 34, h: 10 }, hurtboxes: [{ x: -9, y: 0, w: 18, h: 30 }],
+    hit: { damage: 60, hitstun: 16, blockstun: 12, hitstop: 10, pushbackHit: 4, pushbackBlock: 6, guard: 'low', knockdown: true },
+    crouch: true,
   },
 
-  // --- CROUCH LIGHT: low, must be blocked crouching. Cancels into heavy. ---
-  crouchLight: {
-    id: 'crouchLight',
-    name: 'ローギア',
-    startup: 5,
-    active: 3,
-    recovery: 8,
-    hitbox: { x: 8, y: 6, w: 22, h: 10 },
-    hurtboxes: [{ x: -9, y: 0, w: 18, h: 30 }],
-    hit: {
-      damage: 28,
-      hitstun: 12,
-      blockstun: 9,
-      hitstop: 6,
-      pushbackHit: 3,
-      pushbackBlock: 4,
-      low: true,
+  // ---- AIR NORMALS (jump attacks hit as OVERHEADS) ----------------------
+  jumpLight: {
+    id: 'jumpLight', name: 'ジャンプ弱', startup: 4, active: 8, recovery: 4,
+    hitbox: { x: 4, y: 10, w: 22, h: 16 },
+    hit: { damage: 30, hitstun: 14, blockstun: 10, hitstop: 6, pushbackHit: 2, pushbackBlock: 3, guard: 'high' },
+    air: true,
+  },
+  jumpHeavy: {
+    id: 'jumpHeavy', name: 'ジャンプ強', startup: 7, active: 6, recovery: 6,
+    hitbox: { x: 4, y: 8, w: 28, h: 22 },
+    hit: { damage: 70, hitstun: 18, blockstun: 12, hitstop: 9, pushbackHit: 3, pushbackBlock: 4, guard: 'high' },
+    air: true,
+  },
+
+  // ---- SPECIALS ---------------------------------------------------------
+  // Fireball (236 + light): keep-away / pressure. Spawns a slow projectile;
+  // long recovery so throwing one up close is risky. Chip on block.
+  fireball: {
+    id: 'fireball', name: '波動ギア', startup: 12, active: 2, recovery: 30,
+    hitbox: { x: 0, y: 0, w: 0, h: 0 }, // unused: projectile below drives the hit
+    motion: '236', button: 'light',
+    projectile: {
+      speed: 3.0, box: { x: 0, y: 16, w: 16, h: 16 },
+      hit: { damage: 45, hitstun: 18, blockstun: 14, hitstop: 6, pushbackHit: 4, pushbackBlock: 2, chip: 0.25, guard: 'mid' },
+      life: 120,
     },
-    crouch: true,
-    cancelInto: ['heavy'],
+    hit: { damage: 0, hitstun: 0, blockstun: 0, hitstop: 0, pushbackHit: 0, pushbackBlock: 0 },
+  },
+  // Dragon punch (623 + heavy): invincible rising anti-air, launches, but a
+  // huge whiff punish (long recovery, and it leaves the air vulnerable).
+  dpunch: {
+    id: 'dpunch', name: '昇龍ギア', startup: 4, active: 6, recovery: 30,
+    hitbox: { x: 4, y: 16, w: 24, h: 40 },
+    motion: '623', button: 'heavy', startupInvuln: 8,
+    hit: { damage: 100, hitstun: 22, blockstun: 16, hitstop: 10, pushbackHit: 3, pushbackBlock: 8, guard: 'mid', launch: 5, knockdown: true },
+  },
+
+  // ---- SUPER (236236 + special, spends full meter) ----------------------
+  super: {
+    id: 'super', name: 'ギアマックス', startup: 8, active: 6, recovery: 26,
+    hitbox: { x: 6, y: 12, w: 38, h: 34 },
+    motion: '236236', button: 'special', meterCost: 100, superFlash: 30,
+    hit: { damage: 200, hitstun: 24, blockstun: 18, hitstop: 12, pushbackHit: 6, pushbackBlock: 8, guard: 'mid', knockdown: true, chip: 0.2 },
   },
 };
 
