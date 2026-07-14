@@ -51,6 +51,7 @@ export interface ProjectileSpawn {
 const GRAVITY = 0.42;           // px/frame^2
 const JUMPSQUAT = 3;            // grounded frames before leaving the ground
 const JUMP_H_SPEED = 2.4;       // forward/back jump horizontal travel (px/frame)
+const BACK_WALK_MUL = 0.85;     // backward walk is a touch slower than forward
 const MAX_METER = 100;
 const KNOCKDOWN_FRAMES = 26;
 const WAKEUP_INVULN = 6;
@@ -297,8 +298,17 @@ export class CombatFighter {
       this.jumpDir = input.fwd > 0 ? 1 : input.fwd < 0 ? -1 : 0;
       this.enterPhase('jumpsquat'); this.vx = 0; return;
     }
-    // Guard: holding back = block. Down+back = crouch (low) block.
-    if (input.fwd < 0) { this.setPhase(input.vert < 0 ? 'crouchblock' : 'block'); this.vx = 0; return; }
+    // Holding back: WALK BACKWARD while guard-ready (there's no block button in
+    // SF/SNK - retreating and blocking are the same action, and a hit only
+    // becomes blockstun if it actually connects). Down+back = crouch-block (low,
+    // stationary).
+    if (input.fwd < 0) {
+      if (input.vert < 0) { this.vx = 0; this.setPhase('crouchblock'); return; }
+      this.vx = -this.facing * this.def.walkSpeed * this.gearSpec.walkMul * BACK_WALK_MUL;
+      this.x += this.vx;
+      this.setPhase('block');
+      return;
+    }
     // Crouch.
     if (input.vert < 0) { this.setPhase('crouch'); this.vx = 0; return; }
     // Walk.
@@ -407,10 +417,14 @@ export class CombatFighter {
   }
 
   private stepBlock(input: CommandInput) {
-    // Hold back to keep guarding; down+back = low block, back = high block.
+    // Keep holding back to keep retreating/guarding; down+back = low block.
     if (input.fwd < 0) {
-      this.vx = 0;
-      this.setPhase(input.vert < 0 ? 'crouchblock' : 'block');
+      if (input.vert < 0) { this.vx = 0; this.setPhase('crouchblock'); }
+      else {
+        this.vx = -this.facing * this.def.walkSpeed * this.gearSpec.walkMul * BACK_WALK_MUL;
+        this.x += this.vx;
+        this.setPhase('block');
+      }
     } else if (input.vert < 0) {
       this.setPhase('crouch');
     } else {
