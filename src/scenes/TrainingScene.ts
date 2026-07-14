@@ -68,6 +68,22 @@ export class TrainingScene extends Phaser.Scene {
   private dummyBtn?: Phaser.GameObjects.Text;
   private p2Keyboard = false; // true = local 2P on keyboard instead of dummy
 
+  // match system: best-of-3 rounds, 60s timer, KO / time-over judgement.
+  private p1def!: CharacterDef;
+  private p2def!: CharacterDef;
+  private matchOn = false;
+  private roundPhase: 'intro' | 'fight' | 'over' | 'matchover' = 'fight';
+  private phaseTimer = 0;   // frames left in a non-fight phase
+  private roundTimer = 0;   // frames left in the current round
+  private fightFlash = 0;   // frames to keep showing "FIGHT!"
+  private p1Wins = 0;
+  private p2Wins = 0;
+  private roundNum = 1;
+  private matchBtn?: Phaser.GameObjects.Text;
+  private centerText?: Phaser.GameObjects.Text;
+  private timerText?: Phaser.GameObjects.Text;
+  private pipsGfx?: Phaser.GameObjects.Graphics;
+
   constructor() {
     super('TrainingScene');
   }
@@ -81,9 +97,9 @@ export class TrainingScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#101820');
     // P1 is the character under test (passed from the editor, else the saved
     // working character); P2 is a default sparring dummy.
-    const p1def = this.testDef ?? loadCharacter();
-    const p2def = makeDefaultCharacter('dummy', 'ダミー');
-    this.engine = new CombatEngine(cloneCharacter(p1def), p2def);
+    this.p1def = cloneCharacter(this.testDef ?? loadCharacter());
+    this.p2def = makeDefaultCharacter('dummy', 'ダミー');
+    this.engine = new CombatEngine(cloneCharacter(this.p1def), cloneCharacter(this.p2def));
     this.accumulator = 0;
 
     // ground line
@@ -112,6 +128,20 @@ export class TrainingScene extends Phaser.Scene {
     }).setOrigin(0.5, 0).setResolution(2).setInteractive({ useHandCursor: true });
     this.dummyBtn.on('pointerdown', () => this.cycleDummy());
     this.refreshDummyBtn();
+
+    // Match controls / HUD.
+    this.matchBtn = this.add.text(GAME_WIDTH - 6, 4, '試合開始 ▶', {
+      fontFamily: PIXEL_FONT, fontSize: '10px', color: '#fff', backgroundColor: '#a53', padding: { x: 4, y: 1 },
+    }).setOrigin(1, 0).setResolution(2).setInteractive({ useHandCursor: true });
+    this.matchBtn.on('pointerdown', () => this.matchOn ? this.endMatch() : this.startMatch());
+    this.pipsGfx = this.add.graphics();
+    this.timerText = this.add.text(GAME_WIDTH / 2, 22, '', {
+      fontFamily: PIXEL_FONT, fontSize: '20px', color: '#ffe37a', fontStyle: 'bold',
+    }).setOrigin(0.5, 0).setResolution(2);
+    this.centerText = this.add.text(GAME_WIDTH / 2, 70, '', {
+      fontFamily: PIXEL_FONT, fontSize: '30px', color: '#ffffff', fontStyle: 'bold',
+      stroke: '#000', strokeThickness: 4, align: 'center',
+    }).setOrigin(0.5).setResolution(2).setDepth(50);
 
     this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 10,
       'スティック移動  Z弱 X強 V投げ(密着)  236波動 623昇龍  タッチ:投/波/昇/超',
@@ -288,17 +318,110 @@ export class TrainingScene extends Phaser.Scene {
     let firstSub = true;
     while (this.accumulator >= FIXED_DT) {
       this.accumulator -= FIXED_DT;
-      const in1 = this.buildInput(this.engine.p1, 'p1', firstSub);
-      // P2 = training dummy (CPU/guard/stand) unless local-2P keyboard is on.
-      const in2 = this.p2Keyboard
-        ? this.buildInput(this.engine.p2, 'p2', firstSub)
-        : this.ai.update(this.engine.p2, this.engine.p1, this.dummyMode);
-      this.engine.step(in1, in2);
+      if (this.matchOn) this.tickMatch(firstSub);
+      else this.stepEngineFrame(firstSub);
       firstSub = false;
     }
     // presses are consumed after the frame's sub-steps
     this.clearPresses();
     this.draw();
+  }
+
+  /** One engine frame with live inputs (P1 human, P2 dummy/CPU/2P). */
+  private stepEngineFrame(firstSub: boolean) {
+    const in1 = this.buildInput(this.engine.p1, 'p1', firstSub);
+    // In a match the dummy always fights (CPU) unless local-2P is on.
+    const mode: DummyMode = this.matchOn ? 'cpu' : this.dummyMode;
+    const in2 = this.p2Keyboard
+      ? this.buildInput(this.engine.p2, 'p2', firstSub)
+      : this.ai.update(this.engine.p2, this.engine.p1, mode);
+    this.engine.step(in1, in2);
+  }
+
+  // ---- match manager -----------------------------------------------------
+
+  private startMatch() {
+    this.matchOn = true;
+    this.p1Wins = 0; this.p2Wins = 0; this.roundNum = 1;
+    this.matchBtn?.setText('試合中止 ■');
+    this.beginRound();
+  }
+
+  private endMatch() {
+    this.matchOn = false;
+    this.centerText?.setText('');
+    this.timerText?.setText('');
+    this.matchBtn?.setText('試合開始 ▶');
+    this.resetEngine();
+  }
+
+  private resetEngine() {
+    this.engine = new CombatEngine(cloneCharacter(this.p1def), cloneCharacter(this.p2def));
+    this.ai.reset();
+  }
+
+  private beginRound() {
+    this.resetEngine();
+    this.roundPhase = 'intro';
+    this.phaseTimer = 90;                 // ~1.5s intro
+    this.roundTimer = 60 * 60;            // 60-second round
+    this.fightFlash = 0;
+    this.centerText?.setText(`ROUND ${this.roundNum}`);
+  }
+
+  private tickMatch(firstSub: boolean) {
+    if (this.roundPhase === 'fight') {
+      this.stepEngineFrame(firstSub);
+      if (this.fightFlash > 0 && --this.fightFlash === 0) this.centerText?.setText('');
+      this.roundTimer--;
+      if (this.engine.p1.dead || this.engine.p2.dead) this.endRound('ko');
+      else if (this.roundTimer <= 0) this.endRound('time');
+      return;
+    }
+    // intro / over / matchover: frozen, just count down.
+    if (--this.phaseTimer <= 0) this.advancePhase();
+  }
+
+  private endRound(reason: 'ko' | 'time') {
+    const h1 = this.engine.p1.health, h2 = this.engine.p2.health;
+    let winner: 'p1' | 'p2' | 'draw';
+    if (this.engine.p1.dead && this.engine.p2.dead) winner = 'draw';
+    else if (this.engine.p1.dead) winner = 'p2';
+    else if (this.engine.p2.dead) winner = 'p1';
+    else winner = h1 > h2 ? 'p1' : h2 > h1 ? 'p2' : 'draw';
+
+    if (winner === 'p1' || winner === 'draw') this.p1Wins++;
+    if (winner === 'p2' || winner === 'draw') this.p2Wins++;
+
+    const head = reason === 'ko' ? 'K.O.' : 'TIME UP';
+    const sub = winner === 'draw' ? '引き分け' : winner === 'p1' ? 'あなたの勝ち' : 'CPUの勝ち';
+    this.centerText?.setText(`${head}\n${sub}`);
+    this.roundPhase = 'over';
+    this.phaseTimer = 120; // ~2s
+  }
+
+  private advancePhase() {
+    if (this.roundPhase === 'intro') {
+      this.roundPhase = 'fight';
+      this.fightFlash = 45;
+      this.centerText?.setText('FIGHT!');
+      return;
+    }
+    if (this.roundPhase === 'over') {
+      if (this.p1Wins >= 2 || this.p2Wins >= 2) {
+        const win = this.p1Wins > this.p2Wins ? 'YOU WIN!' : this.p2Wins > this.p1Wins ? 'YOU LOSE...' : 'DRAW GAME';
+        this.centerText?.setText(win);
+        this.roundPhase = 'matchover';
+        this.phaseTimer = 200;
+        return;
+      }
+      this.roundNum++;
+      this.beginRound();
+      return;
+    }
+    if (this.roundPhase === 'matchover') {
+      this.endMatch();
+    }
   }
 
   /** Capture just-pressed keys once per render frame (before sub-stepping). */
@@ -387,6 +510,27 @@ export class TrainingScene extends Phaser.Scene {
     this.drawHealth();
     this.hudP1.setText(this.describe(this.engine.p1));
     this.hudP2.setText(this.describe(this.engine.p2));
+    this.drawMatchHud();
+  }
+
+  private drawMatchHud() {
+    const pips = this.pipsGfx;
+    if (!pips || !this.timerText) return;
+    pips.clear();
+    if (!this.matchOn) { this.timerText.setText(''); return; }
+    // count-down timer (only during intro/fight)
+    if (this.roundPhase === 'fight' || this.roundPhase === 'intro') {
+      this.timerText.setText(String(Math.max(0, Math.ceil(this.roundTimer / 60))));
+    } else {
+      this.timerText.setText('');
+    }
+    // round-win pips under each health bar (best of 3)
+    const pip = (x: number, filled: boolean, color: number) => {
+      pips.lineStyle(1, color, 0.9); pips.strokeCircle(x, 24, 2.5);
+      if (filled) { pips.fillStyle(color, 1); pips.fillCircle(x, 24, 2.5); }
+    };
+    pip(10, this.p1Wins >= 1, 0x66ddff); pip(18, this.p1Wins >= 2, 0x66ddff);
+    pip(GAME_WIDTH - 10, this.p2Wins >= 1, 0xff9966); pip(GAME_WIDTH - 18, this.p2Wins >= 2, 0xff9966);
   }
 
   private drawFighter(f: CombatFighter, capsuleColor: number) {
