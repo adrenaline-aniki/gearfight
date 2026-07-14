@@ -98,6 +98,9 @@ export interface MoveData {
   meterCost?: number;
   /** super-flash / callout frames on activation. */
   superFlash?: number;
+  /** command grab: on the active frame the engine attempts a grab (unblockable,
+   * ignores the melee hitbox) within `range`, techable within `techWindow`. */
+  grab?: { range: number; techWindow: number };
 }
 
 /** One frame of player intent, already resolved to facing-relative directions. */
@@ -109,10 +112,11 @@ export interface CommandInput {
   light: boolean;   // just-pressed this frame
   heavy: boolean;
   special: boolean;
+  throw: boolean;   // throw / throw-tech attempt
   gearUp: boolean;
   gearDown: boolean;
 }
 
 export const EMPTY_COMMAND: CommandInput = {
-  fwd: 0, vert: 0, light: false, heavy: false, special: false, gearUp: false, gearDown: false,
+  fwd: 0, vert: 0, light: false, heavy: false, special: false, throw: false, gearUp: false, gearDown: false,
 };

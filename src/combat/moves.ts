@@ -64,6 +64,17 @@ export const MOVES: Record<string, MoveData> = {
     air: true,
   },
 
+  // ---- THROW (unblockable, close-range; techable) -----------------------
+  throw: {
+    id: 'throw', name: '投げ', startup: 3, active: 2, recovery: 18,
+    hitbox: { x: 0, y: 0, w: 0, h: 0 }, // unused: grab below drives it
+    grab: { range: 28, techWindow: 8 },
+    hit: {
+      damage: 90, hitstun: 0, blockstun: 0, hitstop: 10,
+      pushbackHit: 0, pushbackBlock: 0, knockdown: true,
+    },
+  },
+
   // ---- SPECIALS ---------------------------------------------------------
   // Fireball (236 + light): keep-away / pressure. Spawns a slow projectile;
   // long recovery so throwing one up close is risky. Chip on block.

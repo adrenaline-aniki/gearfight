@@ -58,6 +58,7 @@ const WAKEUP_INVULN = 6;
 const GEAR_SHIFT_LOCK = 8;      // frames you can't act right after a shift (the risk window)
 const GROUND_Y = 0;             // feet baseline in this local world; scene offsets it
 const BUTTON_BUFFER = 4;        // frames an attack press stays live (input leniency)
+const THROW_TECH_BUFFER = 8;    // frames a throw press stays live (also the tech window)
 const MOTION_WINDOW = 16;       // frames of directional history kept for motion inputs
 
 /** facing-relative (fwd,vert) -> numpad digit (6 = forward, 2 = down, etc). */
@@ -115,6 +116,7 @@ export class CombatFighter {
   private bufLight = 0;
   private bufHeavy = 0;
   private bufSpecial = 0;
+  private bufThrow = 0;
 
   // Directional history (facing-relative numpad, newest last) for motion-input
   // special-move detection (236 fireball, 623 dragon punch, 236236 super).
@@ -257,6 +259,7 @@ export class CombatFighter {
     this.bufLight = input.light ? BUTTON_BUFFER : Math.max(0, this.bufLight - 1);
     this.bufHeavy = input.heavy ? BUTTON_BUFFER : Math.max(0, this.bufHeavy - 1);
     this.bufSpecial = input.special ? BUTTON_BUFFER : Math.max(0, this.bufSpecial - 1);
+    this.bufThrow = input.throw ? THROW_TECH_BUFFER : Math.max(0, this.bufThrow - 1);
     // record facing-relative numpad direction
     const np = numpad(input.fwd, input.vert);
     if (this.dirHistory[this.dirHistory.length - 1] !== np) this.dirHistory.push(np);
@@ -328,6 +331,11 @@ export class CombatFighter {
    * buffer it uses. `cancelling` = we're mid-move looking for a cancel target. */
   private resolveAttackInput(input: CommandInput, cancelling: boolean): string | null {
     const airborne = this.phase === 'air' || this.phase === 'airattack';
+
+    // Throw: grounded, close-range, unblockable. Highest priority of the
+    // ground options so it beats a normal when you tap throw. (Whiff/range is
+    // resolved by the engine; here we just commit to the attempt.)
+    if (this.bufThrow > 0 && !airborne && !cancelling) { this.bufThrow = 0; return 'throw'; }
 
     // Touch-queued special (scene shortcut): honoured on the ground only.
     if (this.queuedSpecial && !airborne) {
@@ -512,7 +520,7 @@ export class CombatFighter {
     if (this.phase !== 'attack' && this.phase !== 'airattack') return false;
     if (!this.move) return false;
     const m = this.def.moves[this.move];
-    if (m.projectile) return false;
+    if (m.projectile || m.grab) return false; // projectile/grab don't swing a melee box
     const su = this.phase === 'attack' ? this.scaledStartup(m.startup) : m.startup;
     return this.phaseFrame >= su && this.phaseFrame < su + m.active;
   }
@@ -551,6 +559,59 @@ export class CombatFighter {
   scaledDamage(): number {
     if (!this.move) return 0;
     return Math.round(this.def.moves[this.move].hit.damage * this.gearSpec.damageMul);
+  }
+
+  // ---- throws ------------------------------------------------------------
+
+  /** Is a grab attempt live this frame? */
+  isGrabActive(): boolean {
+    if (this.phase !== 'attack' || !this.move || this.moveHasHit) return false;
+    const m = this.def.moves[this.move];
+    if (!m.grab) return false;
+    return this.phaseFrame >= m.startup && this.phaseFrame < m.startup + m.active;
+  }
+
+  grabRange(): number {
+    return this.move ? this.def.moves[this.move].grab?.range ?? 0 : 0;
+  }
+
+  /** Can this fighter be grabbed right now? Only grounded, non-invulnerable,
+   * "free-ish" states - not airborne, mid-attack, or already reeling. */
+  isThrowable(): boolean {
+    if (!this.isGrounded() || this.invuln > 0) return false;
+    return this.phase === 'idle' || this.phase === 'walk' || this.phase === 'crouch' ||
+           this.phase === 'block' || this.phase === 'crouchblock';
+  }
+
+  /** Did this fighter input throw within the tech window? (throw-break) */
+  wantsThrowTech(): boolean {
+    return this.bufThrow > 0;
+  }
+
+  /** Is this fighter currently performing a throw (any frame of it)? */
+  isThrowing(): boolean {
+    return this.phase === 'attack' && !!this.move && !!this.def.moves[this.move].grab;
+  }
+
+  /** Apply a completed throw to this fighter (the victim). */
+  applyThrown(damage: number, attackerFacing: 1 | -1) {
+    this.health = Math.max(0, this.health - damage);
+    this.move = null;
+    this.moveHasHit = false;
+    this.x += attackerFacing * 8; // tossed away
+    this.stunFrames = KNOCKDOWN_FRAMES;
+    this.phase = 'knockdown';
+    this.phaseFrame = 0;
+  }
+
+  /** Both fighters recover from a teched throw (pushed apart, no knockdown). */
+  applyThrowTechRecover(pushDir: 1 | -1) {
+    this.move = null;
+    this.moveHasHit = false;
+    this.x += pushDir * 10;
+    this.stunFrames = 6;
+    this.phase = 'blockstun'; // brief neutral-ish recovery
+    this.phaseFrame = 0;
   }
 
   // ---- boxes (world space) ----------------------------------------------

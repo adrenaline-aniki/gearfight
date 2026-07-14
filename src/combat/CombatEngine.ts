@@ -17,6 +17,8 @@ export interface HitEvent {
   damage: number;
   guardBreak: boolean;
   projectile?: boolean;
+  thrown?: boolean;
+  teched?: boolean;
 }
 
 /** A live projectile in flight. Owner is 1 or 2 (which fighter fired it). */
@@ -70,12 +72,47 @@ export class CombatEngine {
     this.p2.step(in2, this.p1.x);
 
     this.separate();
+    this.resolveThrows();
     this.resolveHits();
     this.spawnProjectiles();
     this.stepProjectiles();
     this.clampStage();
 
     this.frame++;
+  }
+
+  // ---- throws ------------------------------------------------------------
+
+  private resolveThrows() {
+    this.tryThrow(this.p1, this.p2);
+    this.tryThrow(this.p2, this.p1);
+  }
+
+  private tryThrow(attacker: CombatFighter, defender: CombatFighter) {
+    if (!attacker.isGrabActive()) return;
+    if (Math.abs(defender.x - attacker.x) > attacker.grabRange()) return;
+    // A teching defender is momentarily NOT in a throwable stance (they're doing
+    // their own throw), so check the tech BEFORE the throwable gate.
+    const teched = defender.wantsThrowTech() || defender.isThrowing();
+    if (!teched && !defender.isThrowable()) return;
+
+    attacker.moveHasHit = true; // consume the grab
+    const hit = attacker.currentHit()!;
+    // Throw-tech: if the victim also tried to throw within the window, it's a
+    // soft break - both recover, pushed apart, no damage.
+    if (teched) {
+      const defDir: 1 | -1 = defender.x >= attacker.x ? 1 : -1; // push defender away
+      defender.applyThrowTechRecover(defDir);
+      attacker.applyThrowTechRecover(defDir === 1 ? -1 : 1);
+      this.hitstop = 8;
+      this.lastHits.push({ attacker, defender, blocked: true, damage: 0, guardBreak: false, thrown: true, teched: true });
+      return;
+    }
+    const dmg = hit.damage; // throws deal fixed damage (not gear-scaled)
+    defender.applyThrown(dmg, attacker.facing);
+    this.hitstop = hit.hitstop;
+    attacker.addMeter(6);
+    this.lastHits.push({ attacker, defender, blocked: false, damage: dmg, guardBreak: false, thrown: true });
   }
 
   // ---- projectiles -------------------------------------------------------

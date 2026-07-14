@@ -37,12 +37,12 @@ export class TrainingScene extends Phaser.Scene {
   private keys!: Record<string, Phaser.Input.Keyboard.Key>;
 
   // per-render-frame just-pressed latches (consumed on the next engine sub-step)
-  private p1Press = { light: false, heavy: false, special: false, gearUp: false, gearDown: false };
-  private p2Press = { light: false, heavy: false, special: false, gearUp: false, gearDown: false };
+  private p1Press = { light: false, heavy: false, special: false, throw: false, gearUp: false, gearDown: false };
+  private p2Press = { light: false, heavy: false, special: false, throw: false, gearUp: false, gearDown: false };
 
   // touch state
   private touchHold: RawHold = { left: false, right: false, up: false, down: false };
-  private touchPress = { light: false, heavy: false, special: false, gearUp: false, gearDown: false };
+  private touchPress = { light: false, heavy: false, special: false, throw: false, gearUp: false, gearDown: false };
   // Hold buttons are hit-tested against ALL active pointers every pointer event
   // (down/move/up), so a hold reliably RELEASES the instant no finger is on it -
   // Phaser's per-object pointerup/pointerout is unreliable for touch and left the
@@ -114,7 +114,7 @@ export class TrainingScene extends Phaser.Scene {
     this.refreshDummyBtn();
 
     this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 10,
-      'スティック=移動/斜めジャンプ/しゃがみ  Z弱 X強  236波動 623昇龍  タッチ:波/昇/超',
+      'スティック移動  Z弱 X強 V投げ(密着)  236波動 623昇龍  タッチ:投/波/昇/超',
       { fontFamily: PIXEL_FONT, fontSize: '10px', color: '#556677' }).setOrigin(0.5, 1).setResolution(2);
 
     this.setupKeyboard();
@@ -134,10 +134,10 @@ export class TrainingScene extends Phaser.Scene {
     if (!kb) return;
     this.keys = kb.addKeys({
       left: 'LEFT', right: 'RIGHT', up: 'UP', down: 'DOWN',
-      light: 'Z', heavy: 'X', special: 'C', gearUp: 'E', gearDown: 'Q',
+      light: 'Z', heavy: 'X', special: 'C', throw: 'V', gearUp: 'E', gearDown: 'Q',
       // P2 (optional local sparring)
       p2Left: 'A', p2Right: 'D', p2Up: 'W', p2Down: 'S',
-      p2Light: 'J', p2Heavy: 'K', p2Special: 'L', p2GearUp: 'O', p2GearDown: 'I',
+      p2Light: 'J', p2Heavy: 'K', p2Special: 'L', p2Throw: 'B', p2GearUp: 'O', p2GearDown: 'I',
     }) as Record<string, Phaser.Input.Keyboard.Key>;
   }
 
@@ -178,6 +178,8 @@ export class TrainingScene extends Phaser.Scene {
     press(GAME_WIDTH - 22, by - 28, 11, '波', 0x66ccff, () => this.engine.p1.requestSpecial('fireball'));
     press(GAME_WIDTH - 52, by - 28, 11, '昇', 0xffaa66, () => this.engine.p1.requestSpecial('dpunch'));
     press(GAME_WIDTH - 82, by - 28, 11, '超', 0xff66cc, () => this.engine.p1.requestSpecial('super'));
+    // throw (also throw-tech)
+    press(GAME_WIDTH - 82, by, 12, '投', 0xaa88ff, () => { this.touchPress.throw = true; });
     // gear
     press(GAME_WIDTH - 22, by - 54, 11, 'G+', 0x66ddaa, () => { this.touchPress.gearUp = true; });
     press(GAME_WIDTH - 52, by - 54, 11, 'G-', 0x66ddaa, () => { this.touchPress.gearDown = true; });
@@ -306,18 +308,21 @@ export class TrainingScene extends Phaser.Scene {
     this.p1Press.light = jd(this.keys.light) || this.touchPress.light;
     this.p1Press.heavy = jd(this.keys.heavy) || this.touchPress.heavy;
     this.p1Press.special = jd(this.keys.special) || this.touchPress.special;
+    this.p1Press.throw = jd(this.keys.throw) || this.touchPress.throw;
     this.p1Press.gearUp = jd(this.keys.gearUp) || this.touchPress.gearUp;
     this.p1Press.gearDown = jd(this.keys.gearDown) || this.touchPress.gearDown;
 
     this.p2Press.light = jd(this.keys.p2Light);
     this.p2Press.heavy = jd(this.keys.p2Heavy);
     this.p2Press.special = jd(this.keys.p2Special);
+    this.p2Press.throw = jd(this.keys.p2Throw);
     this.p2Press.gearUp = jd(this.keys.p2GearUp);
     this.p2Press.gearDown = jd(this.keys.p2GearDown);
   }
 
   private clearPresses() {
     this.touchPress.light = this.touchPress.heavy = this.touchPress.special = false;
+    this.touchPress.throw = false;
     this.touchPress.gearUp = this.touchPress.gearDown = false;
   }
 
@@ -352,6 +357,7 @@ export class TrainingScene extends Phaser.Scene {
       light: p && press.light,
       heavy: p && press.heavy,
       special: p && press.special,
+      throw: p && press.throw,
       gearUp: p && press.gearUp,
       gearDown: p && press.gearDown,
     };

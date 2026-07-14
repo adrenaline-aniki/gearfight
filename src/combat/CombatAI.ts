@@ -78,6 +78,12 @@ export class CombatAI {
     // Mid: keep pressing forward into poke range.
     if (dist > 40) { c.fwd = 1; return c; }
 
+    // Point-blank: sometimes go for a throw (beats their guard).
+    if (dist < 26 && this.attackCd === 0 && Math.random() < 0.25) {
+      c.throw = true;
+      this.attackCd = 22;
+      return c;
+    }
     // Close: poke. Alternate lows and mids; sometimes a heavy.
     if (this.attackCd === 0) {
       const r = Math.random();
