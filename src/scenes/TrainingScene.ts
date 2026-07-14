@@ -5,6 +5,7 @@ import { CombatFighter } from '../combat/CombatFighter';
 import { EMPTY_COMMAND, type CommandInput } from '../combat/types';
 import { makeDefaultCharacter, cloneCharacter, type CharacterDef } from '../combat/characterDef';
 import { loadCharacter } from '../combat/characterStore';
+import { CombatAI, type DummyMode } from '../combat/CombatAI';
 
 // GEAR FIGHT — combat rebuild (Phase 1), presentation layer.
 //
@@ -61,6 +62,12 @@ export class TrainingScene extends Phaser.Scene {
   private testDef?: CharacterDef;
   private returnScene = 'ModeSelectScene';
 
+  // training dummy (P2): CPU fights back, guard blocks all, stand is passive.
+  private ai = new CombatAI();
+  private dummyMode: DummyMode = 'cpu';
+  private dummyBtn?: Phaser.GameObjects.Text;
+  private p2Keyboard = false; // true = local 2P on keyboard instead of dummy
+
   constructor() {
     super('TrainingScene');
   }
@@ -98,6 +105,13 @@ export class TrainingScene extends Phaser.Scene {
 
     this.add.text(GAME_WIDTH / 2, 4, 'TRAINING — 箱表示 v3', { fontFamily: PIXEL_FONT, fontSize: '10px', color: '#ffffff' })
       .setOrigin(0.5, 0).setResolution(2);
+
+    // Dummy-mode toggle: CPU (fights back) -> ガード (blocks all) -> 棒立ち -> 2P.
+    this.dummyBtn = this.add.text(GAME_WIDTH / 2, 16, '', {
+      fontFamily: PIXEL_FONT, fontSize: '10px', color: '#fff', backgroundColor: '#2c4', padding: { x: 6, y: 1 },
+    }).setOrigin(0.5, 0).setResolution(2).setInteractive({ useHandCursor: true });
+    this.dummyBtn.on('pointerdown', () => this.cycleDummy());
+    this.refreshDummyBtn();
 
     this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 10,
       'スティック=移動/斜めジャンプ/しゃがみ  Z弱 X強  236波動 623昇龍  タッチ:波/昇/超',
@@ -192,6 +206,26 @@ export class TrainingScene extends Phaser.Scene {
     }
   }
 
+  // ---- training dummy mode ----------------------------------------------
+
+  private cycleDummy() {
+    // cpu -> guard -> stand -> 2P(keyboard) -> cpu
+    if (this.p2Keyboard) { this.p2Keyboard = false; this.dummyMode = 'cpu'; }
+    else if (this.dummyMode === 'cpu') this.dummyMode = 'guard';
+    else if (this.dummyMode === 'guard') this.dummyMode = 'stand';
+    else { this.p2Keyboard = true; }
+    this.ai.reset();
+    this.refreshDummyBtn();
+  }
+
+  private refreshDummyBtn() {
+    if (!this.dummyBtn) return;
+    const label = this.p2Keyboard ? '2P操作'
+      : this.dummyMode === 'cpu' ? 'CPU:攻める'
+      : this.dummyMode === 'guard' ? 'CPU:ガード' : 'CPU:棒立ち';
+    this.dummyBtn.setText(`相手 ▶ ${label}`);
+  }
+
   // ---- virtual analog stick (movement) ----------------------------------
 
   private setupStick() {
@@ -253,7 +287,10 @@ export class TrainingScene extends Phaser.Scene {
     while (this.accumulator >= FIXED_DT) {
       this.accumulator -= FIXED_DT;
       const in1 = this.buildInput(this.engine.p1, 'p1', firstSub);
-      const in2 = this.buildInput(this.engine.p2, 'p2', firstSub);
+      // P2 = training dummy (CPU/guard/stand) unless local-2P keyboard is on.
+      const in2 = this.p2Keyboard
+        ? this.buildInput(this.engine.p2, 'p2', firstSub)
+        : this.ai.update(this.engine.p2, this.engine.p1, this.dummyMode);
       this.engine.step(in1, in2);
       firstSub = false;
     }
@@ -347,21 +384,31 @@ export class TrainingScene extends Phaser.Scene {
   }
 
   private drawFighter(f: CombatFighter, capsuleColor: number) {
-    // placeholder capsule = the current pushbox footprint, filled.
+    // Body = pushbox footprint, tinted BY STATE so the placeholder still reads
+    // clearly: attacking = bright, blocking = cyan, hit/knockdown = red, else base.
+    const cg = this.capsuleGfx;
     const push = f.getPushbox();
-    this.capsuleGfx.fillStyle(capsuleColor, 0.55);
     const sx = push.xmin, sw = push.xmax - push.xmin;
     const top = GROUND_Y - push.ymax, h = push.ymax - push.ymin;
-    this.capsuleGfx.fillRoundedRect(sx, top, sw, h, 4);
-    // facing tick (a nub on the front edge)
-    this.capsuleGfx.fillStyle(0xffffff, 0.9);
-    const frontX = f.facing === 1 ? push.xmax - 2 : push.xmin;
-    this.capsuleGfx.fillRect(frontX, GROUND_Y - push.ymax + 4, 2, 4);
+    let bodyColor = capsuleColor, alpha = 0.6;
+    if (f.phase === 'attack' || f.phase === 'airattack') { bodyColor = 0xffffff; alpha = 0.85; }
+    else if (f.phase === 'block' || f.phase === 'crouchblock') bodyColor = 0x33ddff;
+    else if (f.phase === 'hitstun' || f.phase === 'blockstun' || f.phase === 'knockdown') bodyColor = 0xff4444;
+    cg.fillStyle(bodyColor, alpha);
+    cg.fillRoundedRect(sx, top, sw, h, 4);
 
-    // pushbox (yellow) + hurtboxes (blue)
-    this.strokeWorld(this.gfx, push, 0xffcc33, 0.0, 0xffcc33, 0.5);
+    // head disc (reads as a character; sits above the shoulders)
+    const cx = (push.xmin + push.xmax) / 2;
+    cg.fillStyle(bodyColor, Math.min(1, alpha + 0.15));
+    cg.fillCircle(cx + f.facing * 1.5, top + 4, 4.5);
+    // eye/facing dot so the head clearly points forward
+    cg.fillStyle(0x0a0f14, 0.9);
+    cg.fillCircle(cx + f.facing * 3, top + 4, 1.3);
+
+    // pushbox (faint) + hurtboxes (blue) for the training/labo view
+    this.strokeWorld(this.gfx, push, 0xffcc33, 0.0, 0xffcc33, 0.35);
     for (const hurt of f.getHurtboxesWorld()) {
-      this.strokeWorld(this.gfx, hurt, 0x33aaff, 0.12, 0x33aaff);
+      this.strokeWorld(this.gfx, hurt, 0x33aaff, 0.10, 0x33aaff);
     }
   }
 
