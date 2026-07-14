@@ -48,6 +48,16 @@ export class TrainingScene extends Phaser.Scene {
   // "walk right forever / stuck jumping" holds latched on.
   private holdButtons: { x: number; y: number; r: number; color: number; g: Phaser.GameObjects.Graphics; set: (v: boolean) => void }[] = [];
 
+  // Virtual analog stick (movement): one finger, 8-way. Owned by whichever
+  // pointer first lands in its zone; polled from live pointer state each frame so
+  // release is reliable. Diagonals feed jumps (up-fwd), crouch-block (down-back), etc.
+  private stickBaseX = 44;
+  private stickBaseY = GAME_HEIGHT - 42;
+  private stickRadius = 26;
+  private stickPointerId: number | null = null;
+  private stickBaseGfx!: Phaser.GameObjects.Graphics;
+  private stickKnobGfx!: Phaser.GameObjects.Graphics;
+
   private testDef?: CharacterDef;
   private returnScene = 'ModeSelectScene';
 
@@ -90,11 +100,12 @@ export class TrainingScene extends Phaser.Scene {
       .setOrigin(0.5, 0).setResolution(2);
 
     this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 10,
-      'Z弱 X強  ↓+弱下段 足払い  236+Z波動 623+X昇龍  タッチ:波/昇/超  Q/Eギア',
+      'スティック=移動/斜めジャンプ/しゃがみ  Z弱 X強  236波動 623昇龍  タッチ:波/昇/超',
       { fontFamily: PIXEL_FONT, fontSize: '10px', color: '#556677' }).setOrigin(0.5, 1).setResolution(2);
 
     this.setupKeyboard();
     this.setupTouch();
+    this.setupStick();
 
     this.input.keyboard?.on('keydown-ESC', () => this.scene.start(this.returnScene));
 
@@ -143,12 +154,8 @@ export class TrainingScene extends Phaser.Scene {
     };
 
     const by = GAME_HEIGHT - 46;
-    // movement (hold)
-    hold(20, by, 12, '←', 0x88aacc, (v) => { this.touchHold.left = v; });
-    hold(48, by, 12, '→', 0x88aacc, (v) => { this.touchHold.right = v; });
-    hold(34, by + 20, 12, '↓', 0x88aacc, (v) => { this.touchHold.down = v; });
-    // jump (one-shot press, so holding doesn't re-jump on every landing)
-    press(34, by - 24, 12, '↑', 0x88cc88, () => { this.doJump = true; });
+    // movement: virtual analog stick (built below in setupStick); no d-pad buttons.
+    void hold;
     // attacks
     press(GAME_WIDTH - 22, by, 13, '弱', 0xffdd66, () => { this.touchPress.light = true; });
     press(GAME_WIDTH - 52, by, 13, '強', 0xff8866, () => { this.touchPress.heavy = true; });
@@ -185,13 +192,60 @@ export class TrainingScene extends Phaser.Scene {
     }
   }
 
-  // one-shot jump latch set by the touch jump button
-  private doJump = false;
+  // ---- virtual analog stick (movement) ----------------------------------
+
+  private setupStick() {
+    this.stickBaseGfx = this.add.graphics();
+    this.stickKnobGfx = this.add.graphics();
+    // claim the stick when a finger lands in its (generous) zone
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      if (this.stickPointerId !== null) return;
+      const dx = p.x - this.stickBaseX, dy = p.y - this.stickBaseY;
+      const claimR = this.stickRadius * 2.0; // big catch area for the left thumb
+      if (dx * dx + dy * dy <= claimR * claimR) this.stickPointerId = p.id;
+    });
+    this.drawStick(0, 0);
+  }
+
+  /** Poll the owning pointer each frame -> 8-way holds (reliable release). */
+  private pollStick() {
+    let dx = 0, dy = 0, active = false;
+    if (this.stickPointerId !== null) {
+      const p = this.input.manager.pointers.find((q) => q.id === this.stickPointerId);
+      if (p && p.isDown) {
+        active = true;
+        dx = p.x - this.stickBaseX; dy = p.y - this.stickBaseY;
+        const mag = Math.hypot(dx, dy);
+        if (mag > this.stickRadius) { dx = (dx / mag) * this.stickRadius; dy = (dy / mag) * this.stickRadius; }
+      } else {
+        this.stickPointerId = null;
+      }
+    }
+    const dead = this.stickRadius * 0.32;   // neutral zone
+    const on = this.stickRadius * 0.30;     // per-axis engage threshold (allows diagonals)
+    this.touchHold.left = active && dx < -on;
+    this.touchHold.right = active && dx > on;
+    this.touchHold.up = active && dy < -on;
+    this.touchHold.down = active && dy > on;
+    if (active && Math.hypot(dx, dy) < dead) {
+      this.touchHold.left = this.touchHold.right = this.touchHold.up = this.touchHold.down = false;
+    }
+    this.drawStick(active ? dx : 0, active ? dy : 0);
+  }
+
+  private drawStick(kx: number, ky: number) {
+    const b = this.stickBaseGfx; b.clear();
+    b.fillStyle(0x223344, 0.35); b.fillCircle(this.stickBaseX, this.stickBaseY, this.stickRadius);
+    b.lineStyle(2, 0x6688aa, 0.6); b.strokeCircle(this.stickBaseX, this.stickBaseY, this.stickRadius);
+    const k = this.stickKnobGfx; k.clear();
+    k.fillStyle(0x88bbee, 0.85); k.fillCircle(this.stickBaseX + kx, this.stickBaseY + ky, this.stickRadius * 0.5);
+  }
 
   // ---- input plumbing ----------------------------------------------------
 
   update(_time: number, delta: number) {
     this.pollHolds();
+    this.pollStick();
     this.latchPresses();
 
     this.accumulator += Math.min(delta, 100); // clamp huge frame gaps
@@ -228,7 +282,6 @@ export class TrainingScene extends Phaser.Scene {
   private clearPresses() {
     this.touchPress.light = this.touchPress.heavy = this.touchPress.special = false;
     this.touchPress.gearUp = this.touchPress.gearDown = false;
-    this.doJump = false;
   }
 
   private buildInput(f: CombatFighter, who: 'p1' | 'p2', firstSub: boolean): CommandInput {
@@ -237,7 +290,7 @@ export class TrainingScene extends Phaser.Scene {
       ? {
           left: this.keys.left.isDown || this.touchHold.left,
           right: this.keys.right.isDown || this.touchHold.right,
-          up: this.keys.up.isDown, // touch jump is a one-shot (doJump), not a hold
+          up: this.keys.up.isDown || this.touchHold.up,   // stick up = jump (held)
           down: this.keys.down.isDown || this.touchHold.down,
         }
       : {
@@ -251,9 +304,8 @@ export class TrainingScene extends Phaser.Scene {
     // absolute x -> facing-relative forward
     const absX = hold.right ? 1 : hold.left ? -1 : 0;
     const fwd = absX * f.facing;
-    // jump: keyboard up (held) or the touch one-shot, applied on the first sub-step
-    const jumpNow = hold.up || (who === 'p1' && firstSub && this.doJump);
-    const vert = jumpNow ? 1 : hold.down ? -1 : 0;
+    // jump when up is held (stick or keyboard); down = crouch
+    const vert = hold.up ? 1 : hold.down ? -1 : 0;
 
     // "just pressed" only applies on the first sub-step of a render frame; on
     // later sub-steps it's already been consumed (buffering handles leniency).
