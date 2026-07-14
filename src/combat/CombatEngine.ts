@@ -124,8 +124,11 @@ export class CombatEngine {
     this.projectiles = survivors;
   }
 
-  /** Keep the two pushboxes from overlapping by splitting the overlap. */
+  /** Keep the two pushboxes from overlapping by splitting the overlap. Skipped
+   * when either fighter is airborne, so you can JUMP OVER the opponent (the whole
+   * basis of jump-ins, crossups / めくり, and switching sides). */
   private separate() {
+    if (!this.p1.isGrounded() || !this.p2.isGrounded()) return;
     const a = this.p1.getPushbox();
     const b = this.p2.getPushbox();
     const overlapX = Math.min(a.xmax, b.xmax) - Math.max(a.xmin, b.xmin);

@@ -50,6 +50,7 @@ export interface ProjectileSpawn {
 // - all live in the CharacterDef the author edits.
 const GRAVITY = 0.42;           // px/frame^2
 const JUMPSQUAT = 3;            // grounded frames before leaving the ground
+const JUMP_H_SPEED = 2.4;       // forward/back jump horizontal travel (px/frame)
 const MAX_METER = 100;
 const KNOCKDOWN_FRAMES = 26;
 const WAKEUP_INVULN = 6;
@@ -105,6 +106,7 @@ export class CombatFighter {
 
   shiftLock = 0;     // >0 = locked from acting (post-shift vulnerability)
   invuln = 0;
+  private jumpDir = 0; // facing-relative horizontal jump direction, captured at takeoff
 
   // Attack-button buffers: a press stays "live" for BUTTON_BUFFER frames so a
   // slightly-early input (e.g. cancelling into heavy before recovery starts)
@@ -177,11 +179,15 @@ export class CombatFighter {
     if (this.shiftLock > 0) this.shiftLock--;
     this.tickButtonBuffers(input);
 
-    // Auto-face the opponent only when free to turn (grounded & actionable-ish).
-    if (this.isGrounded() && this.phase !== 'attack' && this.phase !== 'hitstun' &&
-        this.phase !== 'blockstun' && this.phase !== 'knockdown') {
-      this.facing = opponentX >= this.x ? 1 : -1;
-    }
+    // Auto-face the opponent whenever free to turn. Crucially this ALSO happens
+    // in the air (plain jump, not mid-attack), so jumping across the opponent
+    // flips your facing at the axis - that's what makes crossups / めくり work:
+    // your jump-attack hitbox follows to the far side and the defender must
+    // block the other way. Facing locks the instant an attack starts.
+    const canTurn = this.phase !== 'attack' && this.phase !== 'airattack' &&
+      this.phase !== 'jumpsquat' && this.phase !== 'hitstun' &&
+      this.phase !== 'blockstun' && this.phase !== 'knockdown';
+    if (canTurn) this.facing = opponentX >= this.x ? 1 : -1;
 
     // Gear shifting is always allowed except during hitstun/knockdown/attack;
     // it's the risk-vs-reward core, so it deliberately locks you briefly.
@@ -286,8 +292,11 @@ export class CombatFighter {
     // Attacks take priority (buffered + motion inputs resolved here).
     const move = this.resolveAttackInput(input, false);
     if (move) { this.startMove(move); return; }
-    // Jump (up).
-    if (input.vert > 0) { this.enterPhase('jumpsquat'); this.vx = 0; return; }
+    // Jump (up). Capture forward/neutral/back so it becomes a diagonal arc.
+    if (input.vert > 0) {
+      this.jumpDir = input.fwd > 0 ? 1 : input.fwd < 0 ? -1 : 0;
+      this.enterPhase('jumpsquat'); this.vx = 0; return;
+    }
     // Guard: holding back = block. Down+back = crouch (low) block.
     if (input.fwd < 0) { this.setPhase(input.vert < 0 ? 'crouchblock' : 'block'); this.vx = 0; return; }
     // Crouch.
@@ -346,12 +355,12 @@ export class CombatFighter {
     return !m.meterCost || this.meter >= m.meterCost;
   }
 
-  private stepJumpsquat(input: CommandInput) {
+  private stepJumpsquat(_input: CommandInput) {
     if (this.phaseFrame >= JUMPSQUAT - 1) {
       this.vy = this.def.jumpVy;
-      // preserve any held horizontal direction as air momentum
-      const h = input.fwd > 0 ? this.facing : input.fwd < 0 ? -this.facing : 0;
-      this.vx = h * this.def.walkSpeed * 0.9;
+      // Fixed air momentum from the direction held at takeoff (classic no-air-
+      // control). jumpDir is facing-relative; * facing makes it world-space.
+      this.vx = this.jumpDir * this.facing * JUMP_H_SPEED;
       this.enterPhase('air');
     }
   }
