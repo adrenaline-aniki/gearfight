@@ -183,20 +183,30 @@ export class TrainingScene extends Phaser.Scene {
     }) as Record<string, Phaser.Input.Keyboard.Key>;
 
     // Capture the arrow keys + space so the browser's default scroll doesn't run.
-    // That scroll is the usual reason a keyUP gets swallowed on a real browser,
-    // leaving a direction "stuck on" (e.g. one tap of Right = walk forever).
     kb.addCapture('UP,DOWN,LEFT,RIGHT,SPACE');
 
-    // Safety net: if the window/tab loses focus (Cmd+Tab, click-away), the browser
-    // may never deliver keyup - so reset all key state on blur/hide.
-    const reset = () => kb.resetKeys();
+    // HELD directions are tracked with our OWN window listeners keyed by
+    // event.code, NOT Phaser's key.isDown. In some browsers Phaser's held state
+    // failed to clear on keyup (one tap of Right = walk forever). Capture-phase
+    // listeners fire before anything can swallow the event, so keyup always
+    // registers here and a released key can never stick.
+    const kd = (e: KeyboardEvent) => { this.heldCodes.add(e.code); };
+    const ku = (e: KeyboardEvent) => { this.heldCodes.delete(e.code); };
+    const reset = () => { this.heldCodes.clear(); kb.resetKeys(); };
+    window.addEventListener('keydown', kd, true);
+    window.addEventListener('keyup', ku, true);
     window.addEventListener('blur', reset);
     document.addEventListener('visibilitychange', reset);
     this.events.once('shutdown', () => {
+      window.removeEventListener('keydown', kd, true);
+      window.removeEventListener('keyup', ku, true);
       window.removeEventListener('blur', reset);
       document.removeEventListener('visibilitychange', reset);
     });
   }
+
+  // set of currently-held key codes (our own, reliable held-key state)
+  private heldCodes = new Set<string>();
 
   // Minimal on-screen touch controls: a d-pad-ish left cluster and attack/gear
   // buttons on the right. Enough to feel the engine on a phone; the polished
@@ -510,10 +520,10 @@ export class TrainingScene extends Phaser.Scene {
     const jd = Phaser.Input.Keyboard.JustDown;
 
     // rising-edge jump: up newly held this render frame (keyboard or stick)
-    const upP1 = this.keys.up.isDown || this.touchHold.up;
+    const upP1 = this.heldCodes.has('ArrowUp') || this.touchHold.up;
     this.jumpEdgeP1 = upP1 && !this.prevUpP1;
     this.prevUpP1 = upP1;
-    const upP2 = this.keys.p2Up.isDown;
+    const upP2 = this.heldCodes.has('KeyW');
     this.jumpEdgeP2 = upP2 && !this.prevUpP2;
     this.prevUpP2 = upP2;
 
@@ -540,18 +550,21 @@ export class TrainingScene extends Phaser.Scene {
 
   private buildInput(f: CombatFighter, who: 'p1' | 'p2', firstSub: boolean): CommandInput {
     if (!this.keys) return EMPTY_COMMAND;
+    // Held directions come from our own reliable key-code set (see setupKeyboard),
+    // OR-ed with the touch stick for P1.
+    const h = this.heldCodes;
     const hold: RawHold = who === 'p1'
       ? {
-          left: this.keys.left.isDown || this.touchHold.left,
-          right: this.keys.right.isDown || this.touchHold.right,
-          up: this.keys.up.isDown || this.touchHold.up,   // stick up = jump (held)
-          down: this.keys.down.isDown || this.touchHold.down,
+          left: h.has('ArrowLeft') || this.touchHold.left,
+          right: h.has('ArrowRight') || this.touchHold.right,
+          up: h.has('ArrowUp') || this.touchHold.up,   // stick up = jump (held)
+          down: h.has('ArrowDown') || this.touchHold.down,
         }
       : {
-          left: this.keys.p2Left.isDown,
-          right: this.keys.p2Right.isDown,
-          up: this.keys.p2Up.isDown,
-          down: this.keys.p2Down.isDown,
+          left: h.has('KeyA'),
+          right: h.has('KeyD'),
+          up: h.has('KeyW'),
+          down: h.has('KeyS'),
         };
     const press = who === 'p1' ? this.p1Press : this.p2Press;
 
