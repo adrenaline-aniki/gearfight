@@ -40,6 +40,13 @@ export class TrainingScene extends Phaser.Scene {
   private p1Press = { light: false, heavy: false, special: false, throw: false, gearUp: false, gearDown: false };
   private p2Press = { light: false, heavy: false, special: false, throw: false, gearUp: false, gearDown: false };
 
+  // Jump fires on the RISING EDGE of "up" (newly pressed), not while held - so
+  // holding up (keyboard or stick) doesn't machine-gun a jump on every landing.
+  private prevUpP1 = false;
+  private prevUpP2 = false;
+  private jumpEdgeP1 = false;
+  private jumpEdgeP2 = false;
+
   // touch state
   private touchHold: RawHold = { left: false, right: false, up: false, down: false };
   private touchPress = { light: false, heavy: false, special: false, throw: false, gearUp: false, gearDown: false };
@@ -428,6 +435,15 @@ export class TrainingScene extends Phaser.Scene {
   private latchPresses() {
     if (!this.keys) return;
     const jd = Phaser.Input.Keyboard.JustDown;
+
+    // rising-edge jump: up newly held this render frame (keyboard or stick)
+    const upP1 = this.keys.up.isDown || this.touchHold.up;
+    this.jumpEdgeP1 = upP1 && !this.prevUpP1;
+    this.prevUpP1 = upP1;
+    const upP2 = this.keys.p2Up.isDown;
+    this.jumpEdgeP2 = upP2 && !this.prevUpP2;
+    this.prevUpP2 = upP2;
+
     this.p1Press.light = jd(this.keys.light) || this.touchPress.light;
     this.p1Press.heavy = jd(this.keys.heavy) || this.touchPress.heavy;
     this.p1Press.special = jd(this.keys.special) || this.touchPress.special;
@@ -469,8 +485,10 @@ export class TrainingScene extends Phaser.Scene {
     // absolute x -> facing-relative forward
     const absX = hold.right ? 1 : hold.left ? -1 : 0;
     const fwd = absX * f.facing;
-    // jump when up is held (stick or keyboard); down = crouch
-    const vert = hold.up ? 1 : hold.down ? -1 : 0;
+    // jump only on the rising edge of up (once per press), consumed on firstSub;
+    // down is a normal hold (crouch). Prevents "hold up = repeated jumps".
+    const jumpEdge = who === 'p1' ? this.jumpEdgeP1 : this.jumpEdgeP2;
+    const vert = (firstSub && jumpEdge) ? 1 : hold.down ? -1 : 0;
 
     // "just pressed" only applies on the first sub-step of a render frame; on
     // later sub-steps it's already been consumed (buffering handles leniency).
