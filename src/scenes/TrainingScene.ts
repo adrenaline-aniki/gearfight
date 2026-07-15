@@ -722,10 +722,21 @@ export class TrainingScene extends Phaser.Scene {
     };
     stun(6, 150, this.engine.p1.stun / 90, false);
     stun(GAME_WIDTH - 156, 150, this.engine.p2.stun / 90, true);
+
+    // HEAT meter (thin, below the stun bar) - red as it nears overheat.
+    const heat = (x: number, w: number, f: CombatFighter, rightAlign: boolean) => {
+      g.fillStyle(0x1a1e26, 1); g.fillRect(x, 23, w, 1);
+      g.fillStyle(f.overheated ? 0xff3322 : 0xff8833, 1);
+      const fw = Math.max(0, Math.min(w, Math.round(w * (f.heat / 100))));
+      g.fillRect(rightAlign ? x + w - fw : x, 23, fw, 1);
+    };
+    heat(6, 150, this.engine.p1, false);
+    heat(GAME_WIDTH - 156, 150, this.engine.p2, true);
   }
 
   private describe(f: CombatFighter): string {
     const mv = f.move ? `${f.move}:${f.phaseFrame}` : f.phase;
-    return `GL${f.gear} ${mv}\nHP${f.health} ST${Math.round(f.stun)}`;
+    const gl = f.overheated ? 'OVERHEAT!' : `GL${f.gear}`;
+    return `${gl} ${mv}\nHP${f.health} HEAT${Math.round(f.heat)}`;
   }
 }

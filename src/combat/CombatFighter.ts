@@ -62,6 +62,12 @@ const DIZZY_FRAMES = 150;       // base dizzy duration (~2.5s)
 const DIZZY_MASH_REDUCE = 5;    // frames knocked off dizzy per mashed input
 const POST_DIZZY_IMMUNE = 150;  // frames after a dizzy where stun barely builds
 const REVERSAL_WINDOW = 14;     // final getup frames where a special buffers as a reversal
+// Thermal model (the "動力の限界" educational beat, and a real resource layer):
+// attacking/holding a high gear heats the drivetrain; hit HEAT_MAX and it
+// OVERHEATS - forced down to gear 1, can't up-shift, and left briefly exposed.
+const HEAT_MAX = 100;
+const OVERHEAT_DURATION = 150; // frames stuck overheated while it cools back down
+const HEAT_ON_HIT = 6;         // extra heat from throwing an attack at all
 const MAX_METER = 100;
 const KNOCKDOWN_FRAMES = 26;
 const WAKEUP_INVULN = 6;
@@ -108,7 +114,8 @@ export class CombatFighter {
   health: number;
   meter = 0;
   gear = 1;
-  heat = 0;
+  heat = 0;              // 0..HEAT_MAX; high gear heats, low gear cools
+  overheatTimer = 0;     // >0 = overheated: forced to low gear, can't up-shift
 
   phase: FighterPhase = 'idle';
   phaseFrame = 0;    // frames spent in the current phase/move
@@ -197,6 +204,7 @@ export class CombatFighter {
     if (this.invuln > 0) this.invuln--;
     if (this.shiftLock > 0) this.shiftLock--;
     this.tickButtonBuffers(input);
+    this.tickHeat();
 
     // Auto-face the opponent whenever free to turn. Crucially this ALSO happens
     // in the air (plain jump, not mid-attack), so jumping across the opponent
@@ -211,7 +219,8 @@ export class CombatFighter {
     // Gear shifting is always allowed except during hitstun/knockdown/attack;
     // it's the risk-vs-reward core, so it deliberately locks you briefly.
     if (this.shiftLock === 0 && this.canShift()) {
-      if (input.gearUp && this.gear < 5) {
+      // Can't up-shift while overheated - the drivetrain is cooked and forced low.
+      if (input.gearUp && this.gear < 5 && this.overheatTimer === 0) {
         this.gear++;
         this.shiftLock = GEAR_SHIFT_LOCK;
         result.shifted = true;
@@ -310,6 +319,25 @@ export class CombatFighter {
   /** Touch shortcut entry point: queue a special to fire when next actionable. */
   requestSpecial(id: string) {
     this.queuedSpecial = id;
+  }
+
+  /** Thermal model: high gear heats, low gear cools; overheat forces low gear. */
+  private tickHeat() {
+    if (this.overheatTimer > 0) {
+      this.overheatTimer--;
+      this.heat = Math.max(0, this.heat - HEAT_MAX / OVERHEAT_DURATION);
+      return;
+    }
+    this.heat = Math.min(HEAT_MAX, Math.max(0, this.heat + this.gearSpec.heatPerSec / 60));
+    if (this.heat >= HEAT_MAX) {
+      this.overheatTimer = OVERHEAT_DURATION;
+      this.gear = 1;               // forced downshift - the drivetrain is cooked
+      this.shiftLock = 0;
+    }
+  }
+
+  get overheated(): boolean {
+    return this.overheatTimer > 0;
   }
 
   private canShift(): boolean {
@@ -530,6 +558,8 @@ export class CombatFighter {
   private startMove(id: string) {
     const m = this.def.moves[id];
     if (m.meterCost) this.meter = Math.max(0, this.meter - m.meterCost);
+    // swinging a move adds heat, scaled by gear (high gear runs hot)
+    this.heat = Math.min(HEAT_MAX, this.heat + HEAT_ON_HIT * this.gearSpec.damageMul);
     this.move = id;
     this.moveHasHit = false;
     this.moveHasSpawnedProjectile = false;
