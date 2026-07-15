@@ -206,6 +206,12 @@ export class CombatEngine {
     const guardBreak = attacker.gearSpec.guardBreak;
     const res = defender.applyHit(hit, dmg, attacker.facing, guardBreak);
 
+    // Corner behaviour: on BLOCK, a cornered defender can't be pushed back, so
+    // the leftover pushback shoves the ATTACKER out instead - block-strings can't
+    // pin someone at the wall forever. (On hit we DON'T transfer, so corner combos
+    // stay tight and "corner carry" damage is a thing.)
+    if (res.blocked) this.transferCornerPushback(attacker, defender);
+
     // shared hitstop
     this.hitstop = hit.hitstop;
     attacker.addMeter(res.blocked ? 4 : 8);
@@ -214,6 +220,20 @@ export class CombatEngine {
     attacker.heat = Math.min(100, attacker.heat + (res.blocked ? 2 : 5));
 
     this.lastHits.push({ attacker, defender, blocked: res.blocked, damage: res.damage, guardBreak });
+  }
+
+  /** If the defender got shoved past a wall, move the overflow to the attacker
+   * (pushes the attacker out of the corner instead). */
+  private transferCornerPushback(attacker: CombatFighter, defender: CombatFighter) {
+    if (defender.x > STAGE_MAX) {
+      const excess = defender.x - STAGE_MAX;
+      defender.x = STAGE_MAX;
+      attacker.x = Math.max(STAGE_MIN, attacker.x - excess);
+    } else if (defender.x < STAGE_MIN) {
+      const excess = STAGE_MIN - defender.x;
+      defender.x = STAGE_MIN;
+      attacker.x = Math.min(STAGE_MAX, attacker.x + excess);
+    }
   }
 
   private clampStage() {

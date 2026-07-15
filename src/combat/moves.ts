@@ -98,7 +98,9 @@ export const MOVES: Record<string, MoveData> = {
     id: 'dpunch', name: '昇龍ギア', startup: 4, active: 6, recovery: 30,
     hitbox: { x: 4, y: 16, w: 24, h: 40 },
     motion: '623', button: 'heavy', startupInvuln: 8,
-    hit: { damage: 100, hitstun: 22, blockstun: 16, hitstop: 10, pushbackHit: 3, pushbackBlock: 8, guard: 'mid', launch: 5, knockdown: true },
+    // long hard-knockdown so landing this invincible reversal REWARDS you with
+    // okizeme (was -10 on hit; now the DP user recovers first). Still -20 on block.
+    hit: { damage: 100, hitstun: 22, blockstun: 16, hitstop: 10, pushbackHit: 3, pushbackBlock: 8, guard: 'mid', launch: 5, knockdown: true, kdFrames: 42 },
   },
 
   // ---- SUPER (236236 + special, spends full meter) ----------------------
@@ -106,7 +108,7 @@ export const MOVES: Record<string, MoveData> = {
     id: 'super', name: 'ギアマックス', startup: 8, active: 6, recovery: 26,
     hitbox: { x: 6, y: 12, w: 38, h: 34 },
     motion: '236236', button: 'special', meterCost: 100, superFlash: 30,
-    hit: { damage: 200, hitstun: 24, blockstun: 18, hitstop: 12, pushbackHit: 6, pushbackBlock: 8, guard: 'mid', knockdown: true, chip: 0.2 },
+    hit: { damage: 200, hitstun: 24, blockstun: 18, hitstop: 12, pushbackHit: 6, pushbackBlock: 8, guard: 'mid', knockdown: true, kdFrames: 42, chip: 0.2 },
   },
 };
 

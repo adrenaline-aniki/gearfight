@@ -526,11 +526,12 @@ export class CombatFighter {
     // remembered and fires the instant you wake up - the okizeme "reversal" that
     // beats an opponent trying to meaty you. (DP's own startupInvuln + the wakeup
     // i-frames make it a true invincible get-off-me.)
-    if (this.phaseFrame >= KNOCKDOWN_FRAMES - REVERSAL_WINDOW) {
+    const kd = this.stunFrames || KNOCKDOWN_FRAMES; // per-hit knockdown duration
+    if (this.phaseFrame >= kd - REVERSAL_WINDOW) {
       const rev = this.detectReversalInput();
       if (rev) this.pendingReversal = rev;
     }
-    if (this.phaseFrame >= KNOCKDOWN_FRAMES - 1) {
+    if (this.phaseFrame >= kd - 1) {
       this.invuln = WAKEUP_INVULN;
       if (this.pendingReversal) {
         const id = this.pendingReversal;
@@ -795,7 +796,7 @@ export class CombatFighter {
     const hardKnockdown = this.health <= 0 || hit.knockdown || (hit.launch ?? 0) > 0;
     if (hardKnockdown) {
       if (hit.launch) this.vy = hit.launch; // small pop for feel
-      this.stunFrames = KNOCKDOWN_FRAMES;
+      this.stunFrames = hit.kdFrames ?? KNOCKDOWN_FRAMES;
       this.phase = 'knockdown';
       this.phaseFrame = 0;
       this.pendingDizzy = false; // knockdown doesn't dizzy

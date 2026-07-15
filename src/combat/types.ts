@@ -46,6 +46,9 @@ export interface HitProps {
   guard?: Guard;
   /** forces a hard knockdown on a grounded hit (sweeps, some specials). */
   knockdown?: boolean;
+  /** override knockdown duration (frames). Longer = the attacker recovers first
+   * and gets okizeme (e.g. a landed DP should reward you, not leave you minus). */
+  kdFrames?: number;
   /** chip damage dealt even on block, as a fraction of damage. */
   chip?: number;
   /** dizzy/stun points this hit adds (defaults to ~half the damage). Throws set 0. */
