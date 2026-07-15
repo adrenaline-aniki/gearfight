@@ -399,22 +399,36 @@ export class TrainingScene extends Phaser.Scene {
 
   // ---- input plumbing ----------------------------------------------------
 
-  update(_time: number, delta: number) {
-    this.pollHolds();
-    this.pollStick();
-    this.latchPresses();
+  private loggedError = false;
 
-    this.accumulator += Math.min(delta, 100); // clamp huge frame gaps
-    let firstSub = true;
-    while (this.accumulator >= FIXED_DT) {
-      this.accumulator -= FIXED_DT;
-      if (this.matchOn) this.tickMatch(firstSub);
-      else this.stepEngineFrame(firstSub);
-      firstSub = false;
+  update(_time: number, delta: number) {
+    // A game must never HARD-FREEZE from one input: if any single frame throws
+    // (an unexpected state combo), log it once and keep the loop alive instead of
+    // letting the exception kill requestAnimationFrame. Recovers to neutral.
+    try {
+      this.pollHolds();
+      this.pollStick();
+      this.latchPresses();
+
+      this.accumulator += Math.min(delta, 100); // clamp huge frame gaps
+      let firstSub = true;
+      while (this.accumulator >= FIXED_DT) {
+        this.accumulator -= FIXED_DT;
+        if (this.matchOn) this.tickMatch(firstSub);
+        else this.stepEngineFrame(firstSub);
+        firstSub = false;
+      }
+      // presses are consumed after the frame's sub-steps
+      this.clearPresses();
+      this.draw();
+    } catch (err) {
+      this.accumulator = 0;
+      this.clearPresses();
+      if (!this.loggedError) {
+        this.loggedError = true;
+        console.error('[TrainingScene] frame error (recovered):', err);
+      }
     }
-    // presses are consumed after the frame's sub-steps
-    this.clearPresses();
-    this.draw();
   }
 
   /** One engine frame with live inputs (P1 human, P2 dummy/CPU/2P). */
