@@ -32,8 +32,11 @@ export const MOVES: Record<string, MoveData> = {
   standHeavy: {
     id: 'standHeavy', name: '立ち強', startup: 9, active: 4, recovery: 16,
     hitbox: { x: 8, y: 20, w: 30, h: 18 },
-    hit: { damage: 80, hitstun: 18, blockstun: 14, hitstop: 10, pushbackHit: 5, pushbackBlock: 6, guard: 'mid' },
-    cancelInto: ['fireball', 'dpunch', 'super'],
+    // hitstun raised so a landed heavy is ~+4 (rewards the hit: links into a
+    // light, or special-cancel into a combo). Still -6 on block = a real
+    // commitment you get punished for whiffing/pressing on defence.
+    hit: { damage: 80, hitstun: 23, blockstun: 14, hitstop: 10, pushbackHit: 5, pushbackBlock: 6, guard: 'mid' },
+    cancelInto: ['standLight', 'crouchLight', 'fireball', 'dpunch', 'super'],
   },
   // Crouch light: LOW, fast, chains into sweep / stand heavy / specials.
   crouchLight: {

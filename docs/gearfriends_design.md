@@ -70,16 +70,70 @@
 
 ---
 
-## 3. グラフィックが"映える"方向性
+## 3. アートディレクション【確定】＝ HD 2D・金属セル調・発光レイヤー
 
-- **機体は明確にメカ**（ロボ格闘）。関節に**歯車・クランク・ロッドが覗く**デザインにすると、
-  攻撃時の機構オーバーレイ（`往復スライダ/てこ/カム/クランプ`）と絵が一致して説得力が出る。
-- **ギア帯で見た目が変わる**と最高：低ギア＝軽装・青系グロー、高ギア＝装甲展開・赤熱。
-  最低でも**オーバーヒート時に赤熱＋火花＋煙**の差分は入れたい（教育的にも"熱の限界"が伝わる）。
-- **ヒット時の機構ワイヤーフレーム演出**（旧実装の資産）を新エンジンにも移植すると、
-  「回転→直線／揺動」の違いが遊びながら身につく＝**本作にしかない画**になる。
-- 解像度はレトロ縛りを外してよい（ユーザー方針）。**きれいなドット〜セミHD**で、
-  金属のハイライトとギアの陰影が出る塗りが映える。
+**16bit（ドット）縛りは撤廃。狙いは「ネオジオ/CPS級の描き込みを、PS3/360世代の手描きHD 2Dの
+解像度・ライティングに引き上げた2D」**（3Dセルルック＝Xrd系は制作コスト過大のため不採用）。
+
+確定した画風の要件：
+- **高解像度の手描きHD 2D**。硬く効いたクリーンな輪郭＋パネルライン。
+- **金属マテリアル主役**：強いスペキュラ（ハイライト）／リムライト／面のはっきりした陰影。
+  ロボは布や髪より"金属の反射"で魅せる。
+- **発光（エミッシブ）レイヤー**：関節/胸/背の**歯車・クランクが光る**。
+  - 低ギア＝**青系グロー（高RPM）**、高ギア＝**赤熱（高トルク）**、
+  - **オーバーヒート＝赤熱＋火花＋煙**（熱ゲージの視覚化＝教育的にも競技的にも機能）。
+- **機構オーバーレイ**（往復スライダ/てこ/カム/クランプ）と攻撃ポーズを一致させる。
+- **視認性最優先**（鉄心の要求）：発光で技が埋もれないよう、キャラのシルエットとヒット部は常に明確に。
+- 背景と高コントラストで分離。緑背景（#00FF00）で生成→切り出し。
+
+---
+
+## 付録A. 生成プロンプト雛形（1キャラ・フルシート／HD 2D金属セル調）
+
+`ref_<キャラ>.png`（デザイン参照）があれば併せてアップロード。無ければ文章のみでも可。
+以下を貼り付けて生成 → 緑背景切り出し → 足元原点で配置。
+
+```
+A single reference sprite sheet of ONE original mecha fighting-game character
+("Gear Friend"), for a 2D fighting game. HIGH-RESOLUTION hand-drawn HD 2D style
+(late-arcade Neo-Geo/CPS caliber lifted to PS3-era HD 2D). NOT pixel art, NOT
+3D render.
+
+RENDERING:
+- Clean, hard, crisp outlines with panel lines. Metallic material is the star:
+  strong specular highlights, rim light, hard-edged cel shading with a few smooth
+  metal gradients. Robot/mech design with visible GEARS, CRANKS and connecting
+  rods at the joints/chest/back.
+- Emissive glow layer on the gears: a soft BLUE glow (low-gear / high-RPM look).
+- Consistent single key-light from upper-left, strong rim light on the right edge.
+
+CHARACTER (Hajime - the balanced starter mech):
+- Blue-and-white armored humanoid robot, medium build, friendly heroic silhouette,
+  exposed gear at the chest that glows. Clearly readable at small size.
+
+SHEET LAYOUT - draw these poses, all facing SCREEN-RIGHT (3/4 side profile), feet
+on the SAME baseline, same scale, centred in each cell:
+idle, walk (4-frame cycle), crouch, jump, block, crouch-block, hitstun, knockdown,
+getup, dizzy, victory, defeat, overheat (red-hot, sparks, smoke),
+stand-light (forward thrust), stand-heavy (big swing), crouch-light (low poke),
+sweep (low arc), jump-light, jump-heavy (downward), fireball (push-out cast),
+dragon-punch (rising uppercut), super (all gears glowing gold), throw (clamp/grab).
+
+BACKGROUND (critical for extraction): solid FLAT pure green #00FF00 only. No
+gradient, no ground line, NO drop shadow, no texture.
+
+STRICT: character always faces screen-right (mirrored in-engine for player 2).
+NO text, labels, numbers, borders, panels, UI, or watermark anywhere. Sprites only.
+Keep every pose strictly on-model (same design/colours/scale).
+
+NEGATIVE: pixel art, 16-bit, 3D render, text, label, number, border, UI,
+watermark, gradient/patterned background, ground shadow, blurry edges, motion
+blur, character facing camera, cropped feet, inconsistent scale, off-model.
+```
+
+> 色替え（ギア帯/オーバーヒート）は、まず標準色で1シート作り、切り出し後に**ティント/発光の
+> 追加レイヤー**で表現するのが低コスト（全ポーズ再生成は不要）。旧実装の Lanczos 縮小・
+> 緑抜きパイプラインをそのまま流用できる。
 
 ---
 
