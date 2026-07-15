@@ -181,6 +181,21 @@ export class TrainingScene extends Phaser.Scene {
       p2Left: 'A', p2Right: 'D', p2Up: 'W', p2Down: 'S',
       p2Light: 'J', p2Heavy: 'K', p2Special: 'L', p2Throw: 'B', p2GearUp: 'O', p2GearDown: 'I',
     }) as Record<string, Phaser.Input.Keyboard.Key>;
+
+    // Capture the arrow keys + space so the browser's default scroll doesn't run.
+    // That scroll is the usual reason a keyUP gets swallowed on a real browser,
+    // leaving a direction "stuck on" (e.g. one tap of Right = walk forever).
+    kb.addCapture('UP,DOWN,LEFT,RIGHT,SPACE');
+
+    // Safety net: if the window/tab loses focus (Cmd+Tab, click-away), the browser
+    // may never deliver keyup - so reset all key state on blur/hide.
+    const reset = () => kb.resetKeys();
+    window.addEventListener('blur', reset);
+    document.addEventListener('visibilitychange', reset);
+    this.events.once('shutdown', () => {
+      window.removeEventListener('blur', reset);
+      document.removeEventListener('visibilitychange', reset);
+    });
   }
 
   // Minimal on-screen touch controls: a d-pad-ish left cluster and attack/gear
