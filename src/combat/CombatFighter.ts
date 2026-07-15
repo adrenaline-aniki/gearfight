@@ -61,6 +61,7 @@ const STUN_DECAY = 0.5;         // stun bled off per frame while not being hit
 const DIZZY_FRAMES = 150;       // base dizzy duration (~2.5s)
 const DIZZY_MASH_REDUCE = 5;    // frames knocked off dizzy per mashed input
 const POST_DIZZY_IMMUNE = 150;  // frames after a dizzy where stun barely builds
+const REVERSAL_WINDOW = 14;     // final getup frames where a special buffers as a reversal
 const MAX_METER = 100;
 const KNOCKDOWN_FRAMES = 26;
 const WAKEUP_INVULN = 6;
@@ -123,6 +124,7 @@ export class CombatFighter {
   dizzyTimer = 0;              // frames remaining while dizzied
   private dizzyImmune = 0;     // post-dizzy grace where stun barely builds
   private pendingDizzy = false; // dizzy triggers when the current hitstun ends
+  private pendingReversal: string | null = null; // special readied during knockdown, fires on wakeup
 
   // Attack-button buffers: a press stays "live" for BUTTON_BUFFER frames so a
   // slightly-early input (e.g. cancelling into heavy before recovery starts)
@@ -492,10 +494,33 @@ export class CombatFighter {
   }
 
   private stepKnockdown() {
+    // Reversal window: a special/super readied during the back half of getup is
+    // remembered and fires the instant you wake up - the okizeme "reversal" that
+    // beats an opponent trying to meaty you. (DP's own startupInvuln + the wakeup
+    // i-frames make it a true invincible get-off-me.)
+    if (this.phaseFrame >= KNOCKDOWN_FRAMES - REVERSAL_WINDOW) {
+      const rev = this.detectReversalInput();
+      if (rev) this.pendingReversal = rev;
+    }
     if (this.phaseFrame >= KNOCKDOWN_FRAMES - 1) {
       this.invuln = WAKEUP_INVULN;
-      this.setPhase('idle');
+      if (this.pendingReversal) {
+        const id = this.pendingReversal;
+        this.pendingReversal = null;
+        this.startMove(id);
+      } else {
+        this.setPhase('idle');
+      }
     }
+  }
+
+  /** Which special/super the player has readied (motion + button), if any. */
+  private detectReversalInput(): string | null {
+    if (this.bufSpecial > 0 && this.hasSpecial('super') && this.matchMotion('236236') &&
+        this.canAffordSpecial(this.def.moves['super'])) return 'super';
+    if (this.bufHeavy > 0 && this.hasSpecial('dpunch') && this.matchMotion('623')) return 'dpunch';
+    if (this.bufLight > 0 && this.hasSpecial('fireball') && this.matchMotion('236')) return 'fireball';
+    return null;
   }
 
   stunFrames = 0;
@@ -646,6 +671,7 @@ export class CombatFighter {
     this.stunFrames = KNOCKDOWN_FRAMES;
     this.phase = 'knockdown';
     this.phaseFrame = 0;
+    this.pendingReversal = null;
   }
 
   /** Both fighters recover from a teched throw (pushed apart, no knockdown). */
@@ -743,6 +769,7 @@ export class CombatFighter {
       this.phase = 'knockdown';
       this.phaseFrame = 0;
       this.pendingDizzy = false; // knockdown doesn't dizzy
+      this.pendingReversal = null;
     } else {
       this.stunFrames = hit.hitstun;
       this.phase = 'hitstun';

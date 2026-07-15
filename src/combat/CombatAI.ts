@@ -18,12 +18,27 @@ export class CombatAI {
   private attackCd = 0;
   private actionTimer = 0;
   private wantJump = false;
+  private reversaling = false;
 
-  reset() { this.attackCd = 0; this.actionTimer = 0; this.wantJump = false; }
+  reset() { this.attackCd = 0; this.actionTimer = 0; this.wantJump = false; this.reversaling = false; }
 
   update(self: CombatFighter, opp: CombatFighter, mode: DummyMode): CommandInput {
     if (this.attackCd > 0) this.attackCd--;
     if (this.actionTimer > 0) this.actionTimer--;
+
+    // Wakeup reversal: sometimes DP out of knockdown to punish a meaty. Decides
+    // once per knockdown and scripts a 623+heavy that lands just before getup.
+    if (self.phase === 'knockdown' && (mode === 'cpu' || mode === 'guard')) {
+      if (self.phaseFrame === 1) this.reversaling = Math.random() < 0.4;
+      if (this.reversaling) {
+        const pf = self.phaseFrame;
+        if (pf === 21) return { ...EMPTY_COMMAND, fwd: 1 };                       // 6
+        if (pf === 22) return { ...EMPTY_COMMAND, vert: -1 };                     // 2
+        if (pf === 23) return { ...EMPTY_COMMAND, vert: -1, fwd: 1, heavy: true }; // 3 + heavy
+      }
+      return EMPTY_COMMAND;
+    }
+    if (self.phase !== 'knockdown') this.reversaling = false;
 
     if (mode === 'stand') return EMPTY_COMMAND;
     if (mode === 'guard') return this.guard(self, opp);
