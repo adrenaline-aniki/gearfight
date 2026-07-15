@@ -62,7 +62,6 @@ export class TrainingScene extends Phaser.Scene {
   private stickBaseX = 44;
   private stickBaseY = GAME_HEIGHT - 42;
   private stickRadius = 26;
-  private stickPointerId: number | null = null;
   private stickBaseGfx!: Phaser.GameObjects.Graphics;
   private stickKnobGfx!: Phaser.GameObjects.Graphics;
 
@@ -270,29 +269,26 @@ export class TrainingScene extends Phaser.Scene {
   private setupStick() {
     this.stickBaseGfx = this.add.graphics();
     this.stickKnobGfx = this.add.graphics();
-    // claim the stick when a finger lands in its (generous) zone
-    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
-      if (this.stickPointerId !== null) return;
-      const dx = p.x - this.stickBaseX, dy = p.y - this.stickBaseY;
-      const claimR = this.stickRadius * 2.0; // big catch area for the left thumb
-      if (dx * dx + dy * dy <= claimR * claimR) this.stickPointerId = p.id;
-    });
     this.drawStick(0, 0);
   }
 
-  /** Poll the owning pointer each frame -> 8-way holds (reliable release). */
+  /** The stick follows whichever down pointer is in the lower-left control zone
+   * (attack/special buttons all live on the RIGHT, so they never interfere).
+   * This needs no per-pointer identity tracking - which was unreliable (Phaser's
+   * pointer.id is a reused pool slot, and pointerId can be null) and caused a
+   * second finger to hijack the stick, sticking the last direction (e.g. stuck
+   * crouch). No finger in the zone -> instant neutral. */
   private pollStick() {
     let dx = 0, dy = 0, active = false;
-    if (this.stickPointerId !== null) {
-      const p = this.input.manager.pointers.find((q) => q.id === this.stickPointerId);
-      if (p && p.isDown) {
-        active = true;
-        dx = p.x - this.stickBaseX; dy = p.y - this.stickBaseY;
-        const mag = Math.hypot(dx, dy);
-        if (mag > this.stickRadius) { dx = (dx / mag) * this.stickRadius; dy = (dy / mag) * this.stickRadius; }
-      } else {
-        this.stickPointerId = null;
-      }
+    let sp: Phaser.Input.Pointer | undefined;
+    for (const q of this.input.manager.pointers) {
+      if (q.isDown && q.x < GAME_WIDTH * 0.45 && q.y > GAME_HEIGHT * 0.4) { sp = q; break; }
+    }
+    if (sp) {
+      active = true;
+      dx = sp.x - this.stickBaseX; dy = sp.y - this.stickBaseY;
+      const mag = Math.hypot(dx, dy);
+      if (mag > this.stickRadius) { dx = (dx / mag) * this.stickRadius; dy = (dy / mag) * this.stickRadius; }
     }
     const dead = this.stickRadius * 0.32;   // neutral zone
     const on = this.stickRadius * 0.30;     // per-axis engage threshold (allows diagonals)
