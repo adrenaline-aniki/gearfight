@@ -559,7 +559,8 @@ export class TrainingScene extends Phaser.Scene {
     const sx = push.xmin, sw = push.xmax - push.xmin;
     const top = GROUND_Y - push.ymax, h = push.ymax - push.ymin;
     let bodyColor = capsuleColor, alpha = 0.6;
-    if (f.phase === 'attack' || f.phase === 'airattack') { bodyColor = 0xffffff; alpha = 0.85; }
+    if (f.phase === 'dizzy') { bodyColor = 0xffdd33; alpha = 0.8; }
+    else if (f.phase === 'attack' || f.phase === 'airattack') { bodyColor = 0xffffff; alpha = 0.85; }
     else if (f.phase === 'block' || f.phase === 'crouchblock') bodyColor = 0x33ddff;
     else if (f.phase === 'hitstun' || f.phase === 'blockstun' || f.phase === 'knockdown') bodyColor = 0xff4444;
     cg.fillStyle(bodyColor, alpha);
@@ -572,6 +573,16 @@ export class TrainingScene extends Phaser.Scene {
     // eye/facing dot so the head clearly points forward
     cg.fillStyle(0x0a0f14, 0.9);
     cg.fillCircle(cx + f.facing * 3, top + 4, 1.3);
+
+    // dizzy: orbiting "stars" over the head
+    if (f.phase === 'dizzy') {
+      const t = this.time.now / 200;
+      for (let i = 0; i < 3; i++) {
+        const a = t + (i * Math.PI * 2) / 3;
+        cg.fillStyle(0xffee66, 0.95);
+        cg.fillCircle(cx + Math.cos(a) * 7, top - 4 + Math.sin(a) * 2.2, 1.6);
+      }
+    }
 
     // pushbox (faint) + hurtboxes (blue) for the training/labo view
     this.strokeWorld(this.gfx, push, 0xffcc33, 0.0, 0xffcc33, 0.35);
@@ -601,10 +612,20 @@ export class TrainingScene extends Phaser.Scene {
     };
     draw(6, 150, this.engine.p1.health / 1000, 0x44dd66, false);
     draw(GAME_WIDTH - 156, 150, this.engine.p2.health / 1000, 0xdd6644, true);
+
+    // thin STUN meter under each health bar (fills toward a dizzy).
+    const stun = (x: number, w: number, frac: number, rightAlign: boolean) => {
+      g.fillStyle(0x1a1e26, 1); g.fillRect(x, 21, w, 2);
+      g.fillStyle(0xffcc33, 1);
+      const fw = Math.max(0, Math.min(w, Math.round(w * frac)));
+      g.fillRect(rightAlign ? x + w - fw : x, 21, fw, 2);
+    };
+    stun(6, 150, this.engine.p1.stun / 90, false);
+    stun(GAME_WIDTH - 156, 150, this.engine.p2.stun / 90, true);
   }
 
   private describe(f: CombatFighter): string {
     const mv = f.move ? `${f.move}:${f.phaseFrame}` : f.phase;
-    return `GL${f.gear} ${mv}\nHP${f.health} SP${f.meter}`;
+    return `GL${f.gear} ${mv}\nHP${f.health} ST${Math.round(f.stun)}`;
   }
 }

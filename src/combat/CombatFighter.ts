@@ -35,7 +35,7 @@ export const COMBAT_GEARS: Record<number, GearSpec> = {
 export type FighterPhase =
   | 'idle' | 'walk' | 'crouch' | 'jumpsquat' | 'air'
   | 'attack' | 'airattack' | 'block' | 'crouchblock'
-  | 'hitstun' | 'blockstun' | 'knockdown';
+  | 'hitstun' | 'blockstun' | 'knockdown' | 'dizzy';
 
 /** A projectile the engine should spawn (returned from CombatFighter). */
 export interface ProjectileSpawn {
@@ -52,6 +52,15 @@ const GRAVITY = 0.42;           // px/frame^2
 const JUMPSQUAT = 3;            // grounded frames before leaving the ground
 const JUMP_H_SPEED = 2.4;       // forward/back jump horizontal travel (px/frame)
 const BACK_WALK_MUL = 0.85;     // backward walk is a touch slower than forward
+
+// Dizzy / stun: hits add stun; cross the threshold in a short window and you get
+// dizzied (helpless for a bit = free combo). Stun decays in neutral, and a brief
+// post-dizzy immunity prevents infinite dizzy loops.
+const STUN_THRESHOLD = 90;      // stun points that trigger a dizzy
+const STUN_DECAY = 0.5;         // stun bled off per frame while not being hit
+const DIZZY_FRAMES = 150;       // base dizzy duration (~2.5s)
+const DIZZY_MASH_REDUCE = 5;    // frames knocked off dizzy per mashed input
+const POST_DIZZY_IMMUNE = 150;  // frames after a dizzy where stun barely builds
 const MAX_METER = 100;
 const KNOCKDOWN_FRAMES = 26;
 const WAKEUP_INVULN = 6;
@@ -109,6 +118,11 @@ export class CombatFighter {
   shiftLock = 0;     // >0 = locked from acting (post-shift vulnerability)
   invuln = 0;
   private jumpDir = 0; // facing-relative horizontal jump direction, captured at takeoff
+
+  stun = 0;                    // dizzy meter; >= STUN_THRESHOLD -> dizzied
+  dizzyTimer = 0;              // frames remaining while dizzied
+  private dizzyImmune = 0;     // post-dizzy grace where stun barely builds
+  private pendingDizzy = false; // dizzy triggers when the current hitstun ends
 
   // Attack-button buffers: a press stays "live" for BUTTON_BUFFER frames so a
   // slightly-early input (e.g. cancelling into heavy before recovery starts)
@@ -189,7 +203,7 @@ export class CombatFighter {
     // block the other way. Facing locks the instant an attack starts.
     const canTurn = this.phase !== 'attack' && this.phase !== 'airattack' &&
       this.phase !== 'jumpsquat' && this.phase !== 'hitstun' &&
-      this.phase !== 'blockstun' && this.phase !== 'knockdown';
+      this.phase !== 'blockstun' && this.phase !== 'knockdown' && this.phase !== 'dizzy';
     if (canTurn) this.facing = opponentX >= this.x ? 1 : -1;
 
     // Gear shifting is always allowed except during hitstun/knockdown/attack;
@@ -248,6 +262,15 @@ export class CombatFighter {
       case 'knockdown':
         this.stepKnockdown();
         break;
+      case 'dizzy':
+        this.stepDizzy(input);
+        break;
+    }
+
+    // stun bookkeeping: bleed off in neutral, tick post-dizzy immunity.
+    if (this.dizzyImmune > 0) this.dizzyImmune--;
+    if (this.phase !== 'hitstun' && this.phase !== 'dizzy' && this.stun > 0) {
+      this.stun = Math.max(0, this.stun - STUN_DECAY);
     }
 
     this.applyGravity();
@@ -443,6 +466,27 @@ export class CombatFighter {
   private stepStun() {
     // stun duration set on hit via .stunFrames
     if (this.phaseFrame >= this.stunFrames - 1) {
+      if (this.phase === 'hitstun' && this.pendingDizzy) this.enterDizzy();
+      else this.setPhase('idle');
+    }
+  }
+
+  private enterDizzy() {
+    this.pendingDizzy = false;
+    this.stun = 0;
+    this.dizzyTimer = DIZZY_FRAMES;
+    this.vx = 0;
+    this.phase = 'dizzy';
+    this.phaseFrame = 0;
+  }
+
+  private stepDizzy(input: CommandInput) {
+    // mash any input to shake it off faster
+    const mashing = input.light || input.heavy || input.special || input.throw ||
+      input.fwd !== 0 || input.vert !== 0;
+    this.dizzyTimer -= mashing ? DIZZY_MASH_REDUCE : 1;
+    if (this.dizzyTimer <= 0) {
+      this.dizzyImmune = POST_DIZZY_IMMUNE;
       this.setPhase('idle');
     }
   }
@@ -580,7 +624,7 @@ export class CombatFighter {
   isThrowable(): boolean {
     if (!this.isGrounded() || this.invuln > 0) return false;
     return this.phase === 'idle' || this.phase === 'walk' || this.phase === 'crouch' ||
-           this.phase === 'block' || this.phase === 'crouchblock';
+           this.phase === 'block' || this.phase === 'crouchblock' || this.phase === 'dizzy';
   }
 
   /** Did this fighter input throw within the tech window? (throw-break) */
@@ -687,16 +731,26 @@ export class CombatFighter {
     this.x += attackerFacing * hit.pushbackHit;
     this.move = null;
     this.moveHasHit = false;
+
+    // stun buildup (barely accrues during post-dizzy immunity).
+    const stunAdd = hit.stun ?? Math.round(damage * 0.5);
+    this.stun += this.dizzyImmune > 0 ? Math.round(stunAdd * 0.25) : stunAdd;
+
     const hardKnockdown = this.health <= 0 || hit.knockdown || (hit.launch ?? 0) > 0;
     if (hardKnockdown) {
       if (hit.launch) this.vy = hit.launch; // small pop for feel
       this.stunFrames = KNOCKDOWN_FRAMES;
       this.phase = 'knockdown';
       this.phaseFrame = 0;
+      this.pendingDizzy = false; // knockdown doesn't dizzy
     } else {
       this.stunFrames = hit.hitstun;
       this.phase = 'hitstun';
       this.phaseFrame = 0;
+      // a hit that pushes past the threshold dizzies you when this hitstun ends
+      if (this.health > 0 && this.stun >= STUN_THRESHOLD && this.dizzyImmune === 0) {
+        this.pendingDizzy = true;
+      }
     }
     return { blocked: false, damage };
   }

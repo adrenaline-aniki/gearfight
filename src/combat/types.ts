@@ -48,6 +48,8 @@ export interface HitProps {
   knockdown?: boolean;
   /** chip damage dealt even on block, as a fraction of damage. */
   chip?: number;
+  /** dizzy/stun points this hit adds (defaults to ~half the damage). Throws set 0. */
+  stun?: number;
 }
 
 export type MoveId = string;
