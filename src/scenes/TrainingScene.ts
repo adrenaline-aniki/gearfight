@@ -64,6 +64,12 @@ export class TrainingScene extends Phaser.Scene {
   private stickRadius = 26;
   private stickBaseGfx!: Phaser.GameObjects.Graphics;
   private stickKnobGfx!: Phaser.GameObjects.Graphics;
+  // Floating origin: the point where the thumb first lands becomes "neutral", and
+  // direction is measured RELATIVE to it - so a thumb that rests off-centre no
+  // longer reads a false direction ("up crouches", "keeps walking forward").
+  private stickTouchId: number | null = null;
+  private stickOriginX = 0;
+  private stickOriginY = 0;
 
   private testDef?: CharacterDef;
   private returnScene = 'ModeSelectScene';
@@ -275,7 +281,7 @@ export class TrainingScene extends Phaser.Scene {
   private setupStick() {
     this.stickBaseGfx = this.add.graphics();
     this.stickKnobGfx = this.add.graphics();
-    this.drawStick(0, 0);
+    this.drawStick(false, 0, 0);
 
     const canvas = this.game.canvas;
     const rebuild = (e: TouchEvent) => {
@@ -306,46 +312,64 @@ export class TrainingScene extends Phaser.Scene {
    * second finger to hijack the stick, sticking the last direction (e.g. stuck
    * crouch). No finger in the zone -> instant neutral. */
   private pollStick() {
-    let dx = 0, dy = 0, active = false;
-    let px: number | null = null, py = 0;
     // belt-and-suspenders: if the browser reports nothing down anywhere, drop any
     // stragglers (covers a fully-dropped final touchend that left a phantom).
     if (this.stickTouches.size > 0 && !this.input.manager.pointers.some((p) => p.isDown)) {
       this.stickTouches.clear();
     }
-    // a raw browser touch in the lower-left zone drives the stick
-    for (const t of this.stickTouches.values()) {
-      if (t.x < GAME_WIDTH * 0.45 && t.y > GAME_HEIGHT * 0.4) { px = t.x; py = t.y; break; }
+
+    // Resolve the touch that controls the stick. Keep the one we already own; if
+    // it's gone, claim a fresh touch that landed in the lower-left and set the
+    // floating origin to WHERE it landed.
+    let cur: { x: number; y: number } | null = null;
+    if (this.stickTouchId !== null) {
+      const t = this.stickTouches.get(this.stickTouchId);
+      if (t) cur = t; else this.stickTouchId = null;
     }
-    // desktop fallback: the mouse can drive the stick when held in the zone
-    if (px === null) {
+    if (!cur) {
+      for (const [id, t] of this.stickTouches) {
+        if (t.x < GAME_WIDTH * 0.45 && t.y > GAME_HEIGHT * 0.4) {
+          this.stickTouchId = id; this.stickOriginX = t.x; this.stickOriginY = t.y; cur = t; break;
+        }
+      }
+    }
+    // desktop fallback: mouse held in the lower-left, origin = press point (approx base)
+    if (!cur) {
       const m = this.input.mousePointer;
-      if (m && m.isDown && m.x < GAME_WIDTH * 0.45 && m.y > GAME_HEIGHT * 0.4) { px = m.x; py = m.y; }
+      if (m && m.isDown && m.x < GAME_WIDTH * 0.45 && m.y > GAME_HEIGHT * 0.4) {
+        if (this.stickTouchId !== -1) { this.stickTouchId = -1; this.stickOriginX = m.x; this.stickOriginY = m.y; }
+        cur = { x: m.x, y: m.y };
+      } else if (this.stickTouchId === -1) {
+        this.stickTouchId = null;
+      }
     }
-    if (px !== null) {
-      active = true;
-      dx = px - this.stickBaseX; dy = py - this.stickBaseY;
+
+    let dx = 0, dy = 0;
+    const active = cur !== null;
+    if (cur) {
+      dx = cur.x - this.stickOriginX; dy = cur.y - this.stickOriginY;
       const mag = Math.hypot(dx, dy);
       if (mag > this.stickRadius) { dx = (dx / mag) * this.stickRadius; dy = (dy / mag) * this.stickRadius; }
     }
-    const dead = this.stickRadius * 0.32;   // neutral zone
-    const on = this.stickRadius * 0.30;     // per-axis engage threshold (allows diagonals)
-    this.touchHold.left = active && dx < -on;
-    this.touchHold.right = active && dx > on;
-    this.touchHold.up = active && dy < -on;
-    this.touchHold.down = active && dy > on;
-    if (active && Math.hypot(dx, dy) < dead) {
-      this.touchHold.left = this.touchHold.right = this.touchHold.up = this.touchHold.down = false;
-    }
-    this.drawStick(active ? dx : 0, active ? dy : 0);
+    const dead = this.stickRadius * 0.30;   // neutral zone (relative to floating origin)
+    const on = this.stickRadius * 0.28;     // per-axis engage threshold (allows diagonals)
+    const engaged = active && Math.hypot(dx, dy) >= dead;
+    this.touchHold.left = engaged && dx < -on;
+    this.touchHold.right = engaged && dx > on;
+    this.touchHold.up = engaged && dy < -on;
+    this.touchHold.down = engaged && dy > on;
+    this.drawStick(active, dx, dy);
   }
 
-  private drawStick(kx: number, ky: number) {
+  private drawStick(active: boolean, kx: number, ky: number) {
+    // Base is drawn at the floating origin while engaged, else at its resting spot.
+    const bx = active ? this.stickOriginX : this.stickBaseX;
+    const by = active ? this.stickOriginY : this.stickBaseY;
     const b = this.stickBaseGfx; b.clear();
-    b.fillStyle(0x223344, 0.35); b.fillCircle(this.stickBaseX, this.stickBaseY, this.stickRadius);
-    b.lineStyle(2, 0x6688aa, 0.6); b.strokeCircle(this.stickBaseX, this.stickBaseY, this.stickRadius);
+    b.fillStyle(0x223344, 0.35); b.fillCircle(bx, by, this.stickRadius);
+    b.lineStyle(2, 0x6688aa, 0.6); b.strokeCircle(bx, by, this.stickRadius);
     const k = this.stickKnobGfx; k.clear();
-    k.fillStyle(0x88bbee, 0.85); k.fillCircle(this.stickBaseX + kx, this.stickBaseY + ky, this.stickRadius * 0.5);
+    k.fillStyle(0x88bbee, 0.85); k.fillCircle(bx + kx, by + ky, this.stickRadius * 0.5);
   }
 
   // ---- input plumbing ----------------------------------------------------
