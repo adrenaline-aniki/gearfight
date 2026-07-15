@@ -266,10 +266,37 @@ export class TrainingScene extends Phaser.Scene {
 
   // ---- virtual analog stick (movement) ----------------------------------
 
+  // Live map of raw browser touches (identifier -> game-space x/y). Rebuilt from
+  // the authoritative event.touches on EVERY touch event, so a dropped touchend
+  // (an iOS multitouch reality) self-heals on the next touch instead of leaving a
+  // phantom "stuck" pointer that freezes a direction (the "hold" bugs).
+  private stickTouches = new Map<number, { x: number; y: number }>();
+
   private setupStick() {
     this.stickBaseGfx = this.add.graphics();
     this.stickKnobGfx = this.add.graphics();
     this.drawStick(0, 0);
+
+    const canvas = this.game.canvas;
+    const rebuild = (e: TouchEvent) => {
+      this.stickTouches.clear();
+      const rect = canvas.getBoundingClientRect();
+      for (let i = 0; i < e.touches.length; i++) {
+        const t = e.touches[i];
+        const gx = ((t.clientX - rect.left) / rect.width) * GAME_WIDTH;
+        const gy = ((t.clientY - rect.top) / rect.height) * GAME_HEIGHT;
+        this.stickTouches.set(t.identifier, { x: gx, y: gy });
+      }
+    };
+    for (const ev of ['touchstart', 'touchmove', 'touchend', 'touchcancel']) {
+      canvas.addEventListener(ev, rebuild as EventListener, { passive: true });
+    }
+    // clean up when this scene shuts down so listeners don't stack across restarts
+    this.events.once('shutdown', () => {
+      for (const ev of ['touchstart', 'touchmove', 'touchend', 'touchcancel']) {
+        canvas.removeEventListener(ev, rebuild as EventListener);
+      }
+    });
   }
 
   /** The stick follows whichever down pointer is in the lower-left control zone
@@ -280,13 +307,24 @@ export class TrainingScene extends Phaser.Scene {
    * crouch). No finger in the zone -> instant neutral. */
   private pollStick() {
     let dx = 0, dy = 0, active = false;
-    let sp: Phaser.Input.Pointer | undefined;
-    for (const q of this.input.manager.pointers) {
-      if (q.isDown && q.x < GAME_WIDTH * 0.45 && q.y > GAME_HEIGHT * 0.4) { sp = q; break; }
+    let px: number | null = null, py = 0;
+    // belt-and-suspenders: if the browser reports nothing down anywhere, drop any
+    // stragglers (covers a fully-dropped final touchend that left a phantom).
+    if (this.stickTouches.size > 0 && !this.input.manager.pointers.some((p) => p.isDown)) {
+      this.stickTouches.clear();
     }
-    if (sp) {
+    // a raw browser touch in the lower-left zone drives the stick
+    for (const t of this.stickTouches.values()) {
+      if (t.x < GAME_WIDTH * 0.45 && t.y > GAME_HEIGHT * 0.4) { px = t.x; py = t.y; break; }
+    }
+    // desktop fallback: the mouse can drive the stick when held in the zone
+    if (px === null) {
+      const m = this.input.mousePointer;
+      if (m && m.isDown && m.x < GAME_WIDTH * 0.45 && m.y > GAME_HEIGHT * 0.4) { px = m.x; py = m.y; }
+    }
+    if (px !== null) {
       active = true;
-      dx = sp.x - this.stickBaseX; dy = sp.y - this.stickBaseY;
+      dx = px - this.stickBaseX; dy = py - this.stickBaseY;
       const mag = Math.hypot(dx, dy);
       if (mag > this.stickRadius) { dx = (dx / mag) * this.stickRadius; dy = (dy / mag) * this.stickRadius; }
     }
