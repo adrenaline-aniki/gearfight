@@ -97,6 +97,10 @@ export class TrainingScene extends Phaser.Scene {
   private pipsGfx?: Phaser.GameObjects.Graphics;
   private perfectText?: Phaser.GameObjects.Text; // "PERFECT SHIFT!" callout
   private perfectShown = 0;                       // render frames left to show it
+  // impact juice (spark particles + KO/perfect-shift edge detection)
+  private hitFx: { x: number; y: number; vx: number; vy: number; life: number; max: number; color: number; size: number; grav: number }[] = [];
+  private koFlashed = false;
+  private prevPerf: [number, number] = [0, 0];
 
   constructor() {
     super('TrainingScene');
@@ -448,6 +452,64 @@ export class TrainingScene extends Phaser.Scene {
       ? this.buildInput(this.engine.p2, 'p2', firstSub)
       : this.ai.update(this.engine.p2, this.engine.p1, mode);
     this.engine.step(in1, in2);
+    this.consumeHits();
+  }
+
+  /** Turn this frame's engine events into impact juice: hit sparks, gear-break
+   * gold flashes, screen shake weighted by damage, a KO flash, and a green
+   * sparkle on a landed Perfect Shift. Presentation only. */
+  private consumeHits() {
+    const cam = this.cameras.main;
+    for (const h of this.engine.lastHits) {
+      const cx = h.projectile ? h.defender.x : (h.attacker.x + h.defender.x) / 2;
+      const cy = GROUND_Y - 26;
+      if (h.teched) { this.spawnBurst(cx, GROUND_Y - 24, 0x99ddff, 8, 1.4); cam.shake(90, 0.004); continue; }
+      if (h.thrown) { this.spawnBurst(cx, GROUND_Y - 20, 0xffcc66, 14, 2.2); cam.shake(160, 0.010); continue; }
+      if (h.blocked) { this.spawnBurst(cx, cy, 0x66ccff, 7, 1.2); cam.shake(70, 0.003); continue; }
+      const heavy = h.damage >= 70 || h.guardBreak;
+      this.spawnBurst(cx, cy, h.guardBreak ? 0xffee66 : 0xffffff, heavy ? 18 : 11, heavy ? 2.6 : 1.8);
+      cam.shake(heavy ? 170 : 100, heavy ? 0.011 : 0.006);
+      if (h.damage >= 150) cam.flash(120, 255, 255, 255, false);
+    }
+    // KO flash (once per knockout)
+    const someoneDead = this.engine.p1.dead || this.engine.p2.dead;
+    if (someoneDead && !this.koFlashed) { this.koFlashed = true; cam.flash(220, 255, 255, 255, false); cam.shake(300, 0.014); }
+    if (!someoneDead) this.koFlashed = false;
+    // Perfect Shift sparkle (rising edge of perfectShiftFx)
+    const fs = [this.engine.p1, this.engine.p2] as const;
+    for (let i = 0; i < 2; i++) {
+      if (fs[i].perfectShiftFx > 0 && this.prevPerf[i] === 0) {
+        this.spawnBurst(fs[i].x, GROUND_Y - 30, 0x7affc8, 12, 2.0);
+        cam.flash(90, 40, 255, 160, false);
+      }
+      this.prevPerf[i] = fs[i].perfectShiftFx;
+    }
+  }
+
+  /** Radial spark burst: `count` shards flung out from (x,y), fading + falling. */
+  private spawnBurst(x: number, y: number, color: number, count: number, speed: number) {
+    for (let i = 0; i < count; i++) {
+      const a = (i / count) * Math.PI * 2 + Math.random() * 0.5;
+      const sp = speed * (0.5 + Math.random());
+      const max = 12 + Math.floor(Math.random() * 10);
+      this.hitFx.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 0.6, life: max, max, color, size: 1.4 + Math.random() * 1.8, grav: 0.14 });
+    }
+    if (this.hitFx.length > 300) this.hitFx.splice(0, this.hitFx.length - 300);
+  }
+
+  private drawHitFx() {
+    const g = this.gfx;
+    const survivors: typeof this.hitFx = [];
+    for (const p of this.hitFx) {
+      p.life--;
+      p.x += p.vx; p.y += p.vy; p.vy += p.grav; p.vx *= 0.9;
+      const a = Math.max(0, p.life / p.max);
+      const s = p.size * (0.4 + 0.6 * a);
+      g.fillStyle(p.color, a);
+      g.fillRect(p.x - s / 2, p.y - s / 2, s, s);
+      if (p.life > 0) survivors.push(p);
+    }
+    this.hitFx = survivors;
   }
 
   // ---- match manager -----------------------------------------------------
@@ -470,6 +532,9 @@ export class TrainingScene extends Phaser.Scene {
   private resetEngine() {
     this.engine = new CombatEngine(cloneCharacter(this.p1def), cloneCharacter(this.p2def));
     this.ai.reset();
+    this.hitFx.length = 0;
+    this.koFlashed = false;
+    this.prevPerf = [0, 0];
   }
 
   private beginRound() {
@@ -633,6 +698,7 @@ export class TrainingScene extends Phaser.Scene {
       this.strokeWorld(g, projectileWorld(proj), 0xffee44, 0.5, 0xffbb22);
     }
 
+    this.drawHitFx();
     this.drawHealth();
     this.hudP1.setText(this.describe(this.engine.p1));
     this.hudP2.setText(this.describe(this.engine.p2));
