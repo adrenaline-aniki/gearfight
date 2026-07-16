@@ -24,6 +24,10 @@ export interface RigData {
 
 interface Bone { name: string; part: string; pivot: [number, number]; children?: Bone[]; }
 
+/** Per-character posing hints. `bladeArm` = the character's weapon is the back
+ * (armL) blade, so its rush slashes with armL instead of punching with armR. */
+export interface RigStyle { bladeArm?: boolean; }
+
 // The bone TREE (names + hierarchy + z-order) is the same for every humanoid
 // character. Only the joint PIVOTS differ per character - those come from the
 // character's rig.json (parts[].pivot, looked up by part name). z-order = array
@@ -44,12 +48,14 @@ export class PuppetRig {
   private ch: number;
   private footX: number; private footY: number;
   private pivotByPart: Record<string, [number, number]> = {};
+  private style: RigStyle;
   private walkT = 0;
   private clock = 0;
 
-  constructor(scene: Phaser.Scene, data: RigData, texPrefix: string, depth = 0) {
+  constructor(scene: Phaser.Scene, data: RigData, texPrefix: string, depth = 0, style: RigStyle = {}) {
     this.ch = data.canvas[1];
     this.footX = data.footAnchor[0]; this.footY = data.footAnchor[1];
+    this.style = style;
     for (const p of data.parts) this.pivotByPart[p.name] = p.pivot;
     this.root = scene.add.container(0, 0).setDepth(depth).setVisible(false);
     for (const b of BONES) this.build(scene, b, this.root, [0, 0], texPrefix);
@@ -153,6 +159,17 @@ export class PuppetRig {
           A.armL = -0.5 + 0.7 * pump;                        // back arm alternates forward
           A.head = -0.08; A.torso = 0.14;
           return { angles: A, dx: 22 };
+        }
+        if (f.move === 'fireball') {
+          if (this.style.bladeArm) {                         // Wizel: forward blade-rush slashes
+            const slash = Math.sin(f.phaseFrame * 0.7);
+            A.armL = 1.15 + 0.5 * slash;                     // back-arm blade sweeps across the front
+            A.armR = -0.35; A.head = -0.06; A.torso = 0.16;
+            return { angles: A, dx: 20 };
+          }
+          // Hajime: throw the gear-shot forward
+          A.armR = -1.1 * t; A.armRFore = 1.0 * t; A.armL = 0.2 * t; A.head = -0.05 * t;
+          return { angles: A, dx: 10 * t };
         }
         // straight punch: swing the upper arm up to horizontal AND open the elbow
         // (positive forearm) so the fist reaches far forward, and step the body

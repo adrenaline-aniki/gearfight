@@ -183,7 +183,8 @@ export class TrainingScene extends Phaser.Scene {
     // renders under the hitbox overlay). Falls back to the mech if art is absent.
     this.rigs = RIG_CHARS.map((id) => {
       const rd = this.cache.json.get(`${id}Rig`) as RigData | undefined;
-      return rd && this.textures.exists(`rig_${id}_torso`) ? new PuppetRig(this, rd, `rig_${id}_`, 0) : undefined;
+      if (!rd || !this.textures.exists(`rig_${id}_torso`)) return undefined;
+      return new PuppetRig(this, rd, `rig_${id}_`, 0, { bladeArm: id === 'wizel' });
     });
     this.gfx = this.add.graphics();
 
