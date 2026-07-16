@@ -104,11 +104,11 @@ export class PuppetRig {
         return { angles: A, dy: this.stride(A, true) };
       }
       case 'crouch': case 'crouchblock': {
-        // real crouch read: deep splayed knee-bend + forward lean, not a uniform
-        // shrink. Feet stay planted (squash) but the legs visibly fold.
-        A.legR = 0.55; A.legL = -0.55; A.legRShin = 1.15; A.legLShin = 1.15;
-        A.torso = 0.2; A.head = 0.14; A.armR = -0.15;
-        return { angles: A, squashY: 0.82, dx: 4 };
+        // real crouch: DROP the hips (dy) and FOLD the legs to keep the feet on
+        // the floor - the upper body stays full-size (no shrink/"Minimize").
+        A.legR = 0.45; A.legL = -0.45; A.legRShin = 1.6; A.legLShin = 1.6;
+        A.torso = 0.12; A.head = 0.1; A.armR = -0.15;
+        return { angles: A, dy: 120 };
       }
       case 'jumpsquat': case 'air': {
         A.legR = -0.2; A.legL = 0.2; A.legRShin = 0.9; A.legLShin = 0.5; A.armL = -0.3; A.armR = -0.15;
@@ -121,7 +121,9 @@ export class PuppetRig {
         return { angles: A };
       }
       case 'attack': case 'airattack': {
-        const t = Math.min(1, Math.max(0, (f.phaseFrame - 1) / 5));
+        // snap to full extension fast (by ~frame 3) so the arm is fully out
+        // during the brief active frames, not still ramping.
+        const t = Math.min(1, f.phaseFrame / 3);
         const heavy = (f.move ?? '').includes('Heavy') || f.move === 'dpunch' || f.move === 'super';
         if (f.move === 'dpunch') {                          // rising uppercut
           A.armR = -2.1 * t; A.armRFore = 0.5 * t; A.legR = -0.3 * t; A.legRShin = 0.6 * t;
@@ -137,11 +139,12 @@ export class PuppetRig {
           return { angles: A, dx: 24 * t };
         }
         // straight punch: swing the upper arm up to horizontal AND open the elbow
-        // (positive forearm) so the fist reaches far forward.
-        A.armR = (heavy ? -1.25 : -1.1) * t;
-        A.armRFore = (heavy ? 1.25 : 1.05) * t;
-        A.armL = 0.25 * t; A.head = -0.05 * t;
-        return { angles: A, dx: (heavy ? 18 : 13) * t };
+        // (positive forearm) so the fist reaches far forward, and step the body
+        // into it so the lunge reads even at small scale.
+        A.armR = (heavy ? -1.3 : -1.15) * t;
+        A.armRFore = (heavy ? 1.35 : 1.15) * t;
+        A.armL = 0.28 * t; A.head = -0.06 * t; A.torso = 0.1 * t;
+        return { angles: A, dx: (heavy ? 28 : 20) * t };
       }
       case 'hitstun': case 'blockstun': {
         // snap the head/torso back, arms fly up - a clear flinch
