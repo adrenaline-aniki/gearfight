@@ -106,6 +106,9 @@ export interface MoveData {
   /** multi-hit (乱舞): the melee hitbox connects up to `hits` times, once every
    * `interval` frames of the active window, instead of a single hit. */
   multiHit?: { hits: number; interval: number };
+  /** forward self-movement (px/frame) applied during the move's active window -
+   * for dashing/rushing attacks (e.g. Wizel's オーバーシフト・ラッシュ). */
+  advance?: number;
   /** command grab: on the active frame the engine attempts a grab (unblockable,
    * ignores the melee hitbox) within `range`, techable within `techWindow`. */
   grab?: { range: number; techWindow: number };

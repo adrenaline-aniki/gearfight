@@ -3,7 +3,7 @@ import { GAME_WIDTH, GAME_HEIGHT, GROUND_Y, PIXEL_FONT } from '../config/constan
 import { CombatEngine, projectileWorld } from '../combat/CombatEngine';
 import { CombatFighter } from '../combat/CombatFighter';
 import { EMPTY_COMMAND, type CommandInput } from '../combat/types';
-import { makeDefaultCharacter, cloneCharacter, type CharacterDef } from '../combat/characterDef';
+import { makeWizel, cloneCharacter, type CharacterDef } from '../combat/characterDef';
 import { loadCharacter } from '../combat/characterStore';
 import { CombatAI, type DummyMode } from '../combat/CombatAI';
 import { PuppetRig, type RigData } from '../graphics/PuppetRig';
@@ -162,7 +162,7 @@ export class TrainingScene extends Phaser.Scene {
     // P1 is the character under test (passed from the editor, else the saved
     // working character); P2 is a default sparring dummy.
     this.p1def = cloneCharacter(this.testDef ?? loadCharacter());
-    this.p2def = makeDefaultCharacter('dummy', 'ダミー');
+    this.p2def = makeWizel(); // P2 = Wizel (speed type), matching its rig
     this.engine = new CombatEngine(cloneCharacter(this.p1def), cloneCharacter(this.p2def));
     this.accumulator = 0;
 

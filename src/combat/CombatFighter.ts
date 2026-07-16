@@ -506,6 +506,11 @@ export class CombatFighter {
     // velocity is set in startMove; gravity handles the vertical arc).
     if (this.move === 'dpunch') this.x += this.vx;
 
+    // Dashing/rushing attacks advance forward during the active window.
+    if (m.advance && this.phaseFrame >= su && this.phaseFrame < su + m.active) {
+      this.x += m.advance * this.facing;
+    }
+
     // Cancel: once this move has connected (hit or block), its recovery can be
     // cancelled into an allowed target (normal xx normal, normal xx special xx
     // super). Window opens the moment it lands and stays open through recovery.

@@ -65,3 +65,30 @@ function cloneGears(g: Record<number, GearSpec>): Record<number, GearSpec> {
   for (const k of Object.keys(g)) out[+k] = { ...g[+k] };
   return out;
 }
+
+// ウィズル — SPEED type (ソニカ's mech): light, fast, no fireball. Its signature is
+// オーバーシフト・ラッシュ, a forward blade-rush that multi-hits. Lighter per-hit
+// damage and less health than the balanced default, but faster feet + a rushdown
+// tool instead of keep-away. (Per 仕様書 §4.2.)
+export function makeWizel(): CharacterDef {
+  const def = makeDefaultCharacter('wizel', 'ウィズル');
+  def.health = 900;
+  def.walkSpeed = 2.0;
+  def.jumpVy = 6.6;
+  // lighter strikes (speed trades power for tempo)
+  def.moves.standLight.hit.damage = 26;
+  def.moves.standHeavy.hit.damage = 66;
+  def.moves.crouchLight.hit.damage = 24;
+  // fireball slot -> オーバーシフト・ラッシュ: a dashing multi-hit blade rush
+  def.moves.fireball = {
+    id: 'fireball', name: 'オーバーシフト・ラッシュ', startup: 8, active: 18, recovery: 22,
+    // long, forward-reaching blade box so the target stays inside it through the
+    // rush; modest advance so Wizel closes in without overshooting.
+    hitbox: { x: 4, y: 12, w: 52, h: 30 },
+    motion: '236', button: 'light',
+    multiHit: { hits: 5, interval: 3 },
+    advance: 2.4,
+    hit: { damage: 24, hitstun: 12, blockstun: 8, hitstop: 4, pushbackHit: 0, pushbackBlock: 2, guard: 'mid', chip: 0.1 },
+  };
+  return def;
+}
