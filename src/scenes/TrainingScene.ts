@@ -8,6 +8,9 @@ import { loadCharacter } from '../combat/characterStore';
 import { CombatAI, type DummyMode } from '../combat/CombatAI';
 import { PuppetRig, type RigData } from '../graphics/PuppetRig';
 
+// characters that have a puppet-rig; index 0 = P1, index 1 = P2 in this view.
+const RIG_CHARS = ['hajime', 'wizel'] as const;
+
 // GEAR FIGHT — combat rebuild (Phase 1), presentation layer.
 //
 // This is deliberately a TRAINING view: it draws the engine's actual
@@ -130,14 +133,16 @@ export class TrainingScene extends Phaser.Scene {
         }
       }
     });
-    // Hajime puppet-rig parts (cut-out animation from the single idle drawing).
-    this.load.json('hajimeRig', 'sprites/skin/hajime/rig/rig.json');
-    this.load.once('filecomplete-json-hajimeRig', () => {
-      const rd = this.cache.json.get('hajimeRig') as RigData | undefined;
-      for (const part of rd?.parts ?? []) {
-        this.load.image(`rig_hajime_${part.name}`, `sprites/skin/hajime/rig/${part.name}.png`);
-      }
-    });
+    // Puppet-rig parts per character (cut-out animation from one idle drawing).
+    for (const id of RIG_CHARS) {
+      this.load.json(`${id}Rig`, `sprites/skin/${id}/rig/rig.json`);
+      this.load.once(`filecomplete-json-${id}Rig`, () => {
+        const rd = this.cache.json.get(`${id}Rig`) as RigData | undefined;
+        for (const part of rd?.parts ?? []) {
+          this.load.image(`rig_${id}_${part.name}`, `sprites/skin/${id}/rig/${part.name}.png`);
+        }
+      });
+    }
     // HD cel-shaded art reads better smoothly downscaled than nearest-neighbor
     // (which is meant for the pixel UI). Apply LINEAR to skin + rig textures.
     this.load.on('filecomplete', (key: string) => {
@@ -174,15 +179,12 @@ export class TrainingScene extends Phaser.Scene {
       this.add.image(0, 0, '__DEFAULT').setVisible(false),
       this.add.image(0, 0, '__DEFAULT').setVisible(false),
     ];
-    // Build the Hajime puppet rig per slot (created here so it renders under the
-    // hitbox overlay). Falls back gracefully if the rig art didn't load.
-    const rigData = this.cache.json.get('hajimeRig') as RigData | undefined;
-    if (rigData && this.textures.exists('rig_hajime_torso')) {
-      this.rigs = [
-        new PuppetRig(this, rigData, 'rig_hajime_', 0),
-        new PuppetRig(this, rigData, 'rig_hajime_', 0),
-      ];
-    }
+    // Build a puppet rig per slot from that slot's character (created here so it
+    // renders under the hitbox overlay). Falls back to the mech if art is absent.
+    this.rigs = RIG_CHARS.map((id) => {
+      const rd = this.cache.json.get(`${id}Rig`) as RigData | undefined;
+      return rd && this.textures.exists(`rig_${id}_torso`) ? new PuppetRig(this, rd, `rig_${id}_`, 0) : undefined;
+    });
     this.gfx = this.add.graphics();
 
     // health bars (simple)
@@ -755,10 +757,10 @@ export class TrainingScene extends Phaser.Scene {
     g.clear();
     this.capsuleGfx.clear();
 
-    // P1 is Hajime; P2 uses the Hajime skin too for now (mirror-match) so we can
-    // see facing/flip. Falls back to the mech when a pose texture is absent.
-    this.drawFighter(this.engine.p1, 0x4488ff, 0, 'hajime');
-    this.drawFighter(this.engine.p2, 0xff8844, 1, 'hajime');
+    // P1 = Hajime, P2 = Wizel (RIG_CHARS). Falls back to the mech per fighter if
+    // that character's rig art didn't load.
+    this.drawFighter(this.engine.p1, 0x4488ff, 0, RIG_CHARS[0]);
+    this.drawFighter(this.engine.p2, 0xff8844, 1, RIG_CHARS[1]);
 
     // hitboxes on top (red), from whichever fighter is attacking
     for (const f of [this.engine.p1, this.engine.p2]) {
@@ -886,7 +888,8 @@ export class TrainingScene extends Phaser.Scene {
     const dir = f.facing;
 
     // Puppet rig takes precedence (animated cut-out from the idle drawing).
-    if (skinId === 'hajime' && this.rigs[slot]) {
+    // Each slot's rig is already the right character (see RIG_CHARS).
+    if (skinId && this.rigs[slot]) {
       this.skinImgs[slot]?.setVisible(false);
       // Use a CONSTANT display height (standing size). figH shrinks when crouching
       // (shorter pushbox) - scaling by it made the character shrink; the crouch is
