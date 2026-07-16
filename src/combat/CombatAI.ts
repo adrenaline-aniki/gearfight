@@ -47,6 +47,7 @@ export class CombatAI {
     // Per-character personality: ウィズル rushes with GL1-2 light strings and a
     // readable opening; everyone else uses the neutral all-rounder brain.
     if (self.def.id === 'wizel') return this.wizelCpu(self, opp);
+    if (self.def.id === 'ganrock') return this.ganrockCpu(self, opp);
     return this.cpu(self, opp);
   }
 
@@ -170,6 +171,87 @@ export class CombatAI {
       this.attackCd = 11;                        // tight rhythm between jabs
       this.comboStep++;
       if (this.comboStep >= 3) { this.comboStep = 0; this.attackCd = 0; this.pauseTimer = 20; }
+      return c;
+    }
+    return c;
+  }
+
+  // ガンロック — POWER type, per 仕様書 §4.2: fights mainly in GL4-5, "shows its
+  // shift big" (the shift-lock IS a telegraphed opening), and manages heat badly
+  // so it rides GL5 straight into an overheat. Its lesson is the mirror of
+  // Wizel's: high torque hits like a truck but is slow, its gear shifts are a
+  // punishable window, and holding a high gear cooks the drivetrain (forced to
+  // GL1 for a long, wide-open stretch). Punish the shift and the overheat.
+  private ganrockCpu(self: CombatFighter, opp: CombatFighter): CommandInput {
+    const c: CommandInput = { ...EMPTY_COMMAND };
+    const dist = Math.abs(opp.x - self.x);
+    const oppAttacking = opp.phase === 'attack' || opp.phase === 'airattack';
+
+    // Overheated: the drivetrain is cooked and stuck in GL1 - its big weakness.
+    // It can't power up, so it just plods forward and defends, weak and wide
+    // open. This is the window the player is taught to punish.
+    if (self.overheated) {
+      if (oppAttacking && dist < 60) {
+        c.fwd = -1;
+        const g = opp.move ? opp.def.moves[opp.move]?.hit.guard : undefined;
+        if (g === 'low') c.vert = -1;
+        return c;
+      }
+      if (dist > 44) { c.fwd = 1; return c; }
+      // occasional weak poke, but mostly it's just eating pressure
+      if (this.attackCd === 0 && Math.random() < 0.4) { c.light = true; this.attackCd = 18; return c; }
+      return c;
+    }
+
+    // Wants GL4-5. Shifts UP toward high gear whenever it's below GL4 and not
+    // point-blank - DELIBERATELY in the open (the 8f shift-lock is the telegraph
+    // the player learns to dash in on). Bad heat management: it NEVER down-shifts
+    // to cool, so swinging at GL5 rockets it into overheat.
+    if (self.gear < 5 && self.shiftLock === 0 && dist > 30 && this.attackCd === 0 && Math.random() < 0.25) {
+      c.gearUp = true;
+      return c;
+    }
+
+    // Anti-air: slower and less reliable than the all-rounder (it's a heavyweight).
+    if (!opp.isGrounded() && dist < 50 && self.isGrounded() && this.attackCd === 0 && Math.random() < 0.12) {
+      self.requestSpecial('dpunch');
+      this.attackCd = 44;
+      return c;
+    }
+    // Sometimes just plant and block a committed poke.
+    if (oppAttacking && dist < 58 && Math.random() < 0.45) {
+      c.fwd = -1;
+      const g = opp.move ? opp.def.moves[opp.move]?.hit.guard : undefined;
+      if (g === 'low') c.vert = -1;
+      return c;
+    }
+
+    // Far: trudge forward; from just outside range, occasionally commit to the
+    // slow, telegraphed トルクスイング (its signature power lunge).
+    if (dist > 52) {
+      if (dist < 96 && this.attackCd === 0 && Math.random() < 0.05) {
+        self.requestSpecial('fireball');       // トルクスイング
+        this.attackCd = 46;
+        return c;
+      }
+      c.fwd = 1;
+      return c;
+    }
+
+    // Point-blank: a heavyweight loves the throw when they're cornered guarding.
+    if (dist < 28 && this.attackCd === 0 && Math.random() < 0.28) {
+      c.throw = true;
+      this.attackCd = 24;
+      return c;
+    }
+
+    // In range: heavy, deliberate pokes - lead with the wrecking-ball heavy, mix
+    // in a jab or the lunge. Slow rhythm (it's a power type, not a rushdown).
+    if (this.attackCd === 0) {
+      const r = Math.random();
+      if (r < 0.5) { c.heavy = true; this.attackCd = 26; }          // 立ち強 wrecking ball
+      else if (r < 0.8) { c.light = true; this.attackCd = 16; }     // jab
+      else { self.requestSpecial('fireball'); this.attackCd = 40; } // トルクスイング up close
       return c;
     }
     return c;

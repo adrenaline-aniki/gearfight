@@ -92,3 +92,58 @@ export function makeWizel(): CharacterDef {
   };
   return def;
 }
+
+// ガンロック — POWER type (ゴウケン's mech): a heavy, slow bruiser. Tanky and slow
+// on its feet, but every blow lands like a hammer, and its high-gear (GL4-5)
+// damage multiplier + guard-break chip make it a wall of pressure. Signature is
+// トルクブレイカー, a single crushing high-torque blow (no flurry - power, not
+// speed). It heats fast and manages that heat badly (see the AI), so its lesson
+// is the mirror of Wizel's: high torque is devastating but slow, its shifts are
+// telegraphed, and holding a high gear cooks the drivetrain. (Per 仕様書 §4.2.)
+export function makeGanrock(): CharacterDef {
+  const def = makeDefaultCharacter('ganrock', 'ガンロック');
+  def.health = 1150;
+  def.walkSpeed = 1.2;
+  def.jumpVy = 5.9;
+  // Heavier, slower normals: the jab is a beat slower, the heavy is a wrecking
+  // ball with real reach.
+  def.moves.standLight = {
+    id: 'standLight', name: '立ち弱', startup: 5, active: 3, recovery: 8,
+    hitbox: { x: 8, y: 22, w: 24, h: 12 },
+    hit: { damage: 38, hitstun: 12, blockstun: 9, hitstop: 6, pushbackHit: 3, pushbackBlock: 4, guard: 'mid' },
+    cancelInto: ['standHeavy', 'crouchHeavy', 'fireball', 'dpunch', 'super'],
+  };
+  def.moves.standHeavy = {
+    id: 'standHeavy', name: '立ち強', startup: 12, active: 4, recovery: 20,
+    hitbox: { x: 8, y: 20, w: 34, h: 20 },
+    hit: { damage: 115, hitstun: 24, blockstun: 15, hitstop: 12, pushbackHit: 6, pushbackBlock: 8, guard: 'mid' },
+    cancelInto: ['fireball', 'super'],
+  };
+  def.moves.crouchLight.hit.damage = 30;
+  def.moves.crouchHeavy.hit.damage = 78;
+  // fireball slot -> トルクスイング: a slow, telegraphed, forward-lunging lever-
+  // crank haymaker. Long wind-up (the "shift shown big" read), one enormous hit
+  // that knocks down and chips hard through guard. Scales with gear like any
+  // move, so at GL4-5 it is monstrous.
+  def.moves.fireball = {
+    id: 'fireball', name: 'トルクスイング', startup: 16, active: 4, recovery: 26,
+    hitbox: { x: 6, y: 14, w: 44, h: 34 },
+    motion: '236', button: 'heavy',
+    advance: 2.0,
+    hit: { damage: 78, hitstun: 22, blockstun: 20, hitstop: 12, pushbackHit: 6, pushbackBlock: 10, guard: 'mid', chip: 0.25, knockdown: true },
+  };
+  // super -> トルクブレイカー: one devastating high-torque blow (NOT a 乱舞). Big,
+  // committal, guaranteed knockdown.
+  def.moves.super = {
+    id: 'super', name: 'トルクブレイカー', startup: 10, active: 5, recovery: 30,
+    hitbox: { x: 4, y: 8, w: 46, h: 46 },
+    motion: '236236', button: 'special', meterCost: 100, superFlash: 30,
+    hit: { damage: 150, hitstun: 24, blockstun: 18, hitstop: 12, pushbackHit: 4, pushbackBlock: 10, guard: 'mid', chip: 0.2, knockdown: true, kdFrames: 46 },
+  };
+  // Runs hot and manages it badly: its high gears heat faster than anyone's, so
+  // riding GL5 overheats it quickly (a bigger, more punishable window - its
+  // signature weakness).
+  def.gears[4].heatPerSec = 20;
+  def.gears[5].heatPerSec = 42;
+  return def;
+}
