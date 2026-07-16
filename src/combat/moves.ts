@@ -106,11 +106,15 @@ export const MOVES: Record<string, MoveData> = {
   },
 
   // ---- SUPER (236236 + special, spends full meter) ----------------------
+  // ギアマックス: a 乱舞 - all gears engage for a rapid flurry of gear-driven
+  // strikes. 7 hits over the active window; each hit is light (~30) so the total
+  // (~210) matches a big super, and the victim stays locked in the flurry.
   super: {
-    id: 'super', name: 'ギアマックス', startup: 8, active: 6, recovery: 26,
-    hitbox: { x: 6, y: 12, w: 38, h: 34 },
+    id: 'super', name: 'ギアマックス', startup: 8, active: 24, recovery: 28,
+    hitbox: { x: 4, y: 10, w: 42, h: 38 },
     motion: '236236', button: 'special', meterCost: 100, superFlash: 30,
-    hit: { damage: 200, hitstun: 24, blockstun: 18, hitstop: 12, pushbackHit: 6, pushbackBlock: 8, guard: 'mid', knockdown: true, kdFrames: 42, chip: 0.2 },
+    multiHit: { hits: 7, interval: 3 },
+    hit: { damage: 30, hitstun: 10, blockstun: 8, hitstop: 5, pushbackHit: 1, pushbackBlock: 2, guard: 'mid', chip: 0.15 },
   },
 };
 

@@ -211,7 +211,8 @@ export class CombatEngine {
     }
     if (!contact) return;
 
-    attacker.moveHasHit = true;
+    // gate the strike (single-hit lands once; 乱舞 lands repeatedly on a cadence)
+    if (!attacker.tryRegisterHit()) return;
     const hit = attacker.currentHit()!;
     const dmg = attacker.scaledDamage();
     const guardBreak = attacker.gearSpec.guardBreak;

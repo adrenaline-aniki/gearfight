@@ -103,6 +103,9 @@ export interface MoveData {
   meterCost?: number;
   /** super-flash / callout frames on activation. */
   superFlash?: number;
+  /** multi-hit (乱舞): the melee hitbox connects up to `hits` times, once every
+   * `interval` frames of the active window, instead of a single hit. */
+  multiHit?: { hits: number; interval: number };
   /** command grab: on the active frame the engine attempts a grab (unblockable,
    * ignores the melee hitbox) within `range`, techable within `techWindow`. */
   grab?: { range: number; techWindow: number };

@@ -137,10 +137,12 @@ export class PuppetRig {
           A.armR = -0.95 * t; A.armRFore = 0.85 * t; A.armL = 0.7 * t; A.head = 0.05 * t;
           return { angles: A, dx: 8 * t };
         }
-        if (f.move === 'super') {                            // big committed lunge
-          A.armR = -1.45 * t; A.armRFore = 1.4 * t; A.armL = -0.35 * t;
-          A.head = -0.1 * t; A.torso = 0.12 * t;
-          return { angles: A, dx: 24 * t };
+        if (f.move === 'super') {                            // ギアマックス: 乱舞 flurry
+          const pump = Math.sin(f.phaseFrame * 0.85);        // fast alternating jabs
+          A.armR = -1.15 - 0.25 * pump; A.armRFore = 1.1 + 0.3 * pump;
+          A.armL = -0.5 + 0.7 * pump;                        // back arm alternates forward
+          A.head = -0.08; A.torso = 0.14;
+          return { angles: A, dx: 22 };
         }
         // straight punch: swing the upper arm up to horizontal AND open the elbow
         // (positive forearm) so the fist reaches far forward, and step the body

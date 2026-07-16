@@ -135,6 +135,26 @@ export class CombatFighter {
 
   move: string | null = null;
   moveHasHit = false; // one hit per move activation
+  moveHitCount = 0;            // hits landed so far (multi-hit / 乱舞)
+  private moveLastHitFrame = -99;
+
+  /** Engine asks this when its hitbox touches a hurtbox: may the strike land now?
+   * (registers it). Single-hit moves land once; multi-hit moves land every
+   * `interval` frames up to `hits`. */
+  tryRegisterHit(): boolean {
+    const mh = this.move ? this.def.moves[this.move].multiHit : undefined;
+    if (mh) {
+      if (this.moveHitCount >= mh.hits) return false;
+      if (this.phaseFrame - this.moveLastHitFrame < mh.interval) return false;
+      this.moveLastHitFrame = this.phaseFrame;
+      this.moveHitCount++;
+      if (this.moveHitCount >= mh.hits) this.moveHasHit = true; // final hit locks cancels
+      return true;
+    }
+    if (this.moveHasHit) return false;
+    this.moveHasHit = true;
+    return true;
+  }
 
   shiftLock = 0;     // >0 = locked from acting (post-shift vulnerability)
   invuln = 0;
@@ -600,12 +620,19 @@ export class CombatFighter {
     this.move = id;
     this.moveHasHit = false;
     this.moveHasSpawnedProjectile = false;
+    this.moveHitCount = 0;
+    this.moveLastHitFrame = -99;
     this.vx = 0;
     this.enterPhase('attack');
     // アッパーシフト leaps up+forward the instant it starts (applyGravity this same
     // frame carries it up). Set here, not in stepAttack, because a move started
-    // from neutral doesn't get its first stepAttack until the NEXT frame.
-    if (id === 'dpunch') { this.vy = DP_LEAP_VY; this.vx = this.facing * DP_LEAP_VX; }
+    // from neutral doesn't get its first stepAttack until the NEXT frame. Gear-
+    // linked: a higher gear cranks a taller leap (more anti-air reach, but slower
+    // to recover as it falls further).
+    if (id === 'dpunch') {
+      this.vy = DP_LEAP_VY * (0.85 + this.gear * 0.06); // gear1 ~0.91x .. gear5 ~1.15x
+      this.vx = this.facing * DP_LEAP_VX;
+    }
   }
 
   /** Air normal: keeps the jump arc (does NOT reset vx/vy). */

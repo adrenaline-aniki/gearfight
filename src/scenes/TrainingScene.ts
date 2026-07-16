@@ -102,6 +102,9 @@ export class TrainingScene extends Phaser.Scene {
   private hitFx: { x: number; y: number; vx: number; vy: number; life: number; max: number; color: number; size: number; grav: number }[] = [];
   private koFlashed = false;
   private prevPerf: [number, number] = [0, 0];
+  private prevMove: [string | null, string | null] = [null, null]; // super-activation edge
+  private superText?: Phaser.GameObjects.Text;
+  private superShown = 0;
   // sprite-skin layer: one image per fighter slot. If a pose texture exists the
   // fighter is drawn as that sprite; otherwise we fall back to the gear-mech.
   private skinImgs: Phaser.GameObjects.Image[] = [];
@@ -218,6 +221,12 @@ export class TrainingScene extends Phaser.Scene {
       fontFamily: PIXEL_FONT, fontSize: '20px', color: '#7affc8', fontStyle: 'bold',
       stroke: '#0a3a28', strokeThickness: 4,
     }).setOrigin(0.5).setResolution(2).setDepth(60).setVisible(false);
+
+    // "GEAR MAX!!" super callout.
+    this.superText = this.add.text(GAME_WIDTH / 2, 64, 'GEAR MAX!!', {
+      fontFamily: PIXEL_FONT, fontSize: '30px', color: '#ffe14a', fontStyle: 'bold',
+      stroke: '#5a3a00', strokeThickness: 5,
+    }).setOrigin(0.5).setResolution(2).setDepth(62).setVisible(false);
 
     this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 10,
       'スティック=移動/ジャンプ/しゃがみ ｜ 弱 強 投 ｜ 波 昇 超=必殺 ｜ G+/G-=ギア（2回押し＝パーフェクト）',
@@ -535,6 +544,14 @@ export class TrainingScene extends Phaser.Scene {
         cam.flash(90, 40, 255, 160, false);
       }
       this.prevPerf[i] = fs[i].perfectShiftFx;
+      // ギアマックス activation (rising edge of the super move): gold flash + burst + callout
+      if (fs[i].move === 'super' && this.prevMove[i] !== 'super') {
+        cam.flash(200, 255, 225, 90, false);
+        cam.shake(160, 0.008);
+        this.spawnBurst(fs[i].x, GROUND_Y - 28, 0xffe14a, 22, 2.6);
+        this.superShown = 40;
+      }
+      this.prevMove[i] = fs[i].move;
     }
   }
 
@@ -587,6 +604,8 @@ export class TrainingScene extends Phaser.Scene {
     this.hitFx.length = 0;
     this.koFlashed = false;
     this.prevPerf = [0, 0];
+    this.prevMove = [null, null];
+    this.superShown = 0;
   }
 
   private beginRound() {
@@ -778,6 +797,20 @@ export class TrainingScene extends Phaser.Scene {
       t.setAlpha(0.55 + 0.45 * Math.abs(Math.sin(this.perfectShown * 0.5)));
     } else if (t.visible) {
       t.setVisible(false);
+    }
+
+    // "GEAR MAX!!" super callout (grows in, then holds/pulses)
+    const st = this.superText;
+    if (st) {
+      if (this.superShown > 0) {
+        this.superShown--;
+        st.setVisible(true);
+        const grow = Math.min(1, (40 - this.superShown) / 6);
+        st.setScale(0.6 + 0.5 * grow);
+        st.setAlpha(Math.min(1, this.superShown / 8));
+      } else if (st.visible) {
+        st.setVisible(false);
+      }
     }
   }
 
