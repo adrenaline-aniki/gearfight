@@ -760,10 +760,14 @@ export class CombatFighter {
     return this.def.moves[this.move].hit;
   }
 
-  /** Damage of the current move after gear scaling. */
+  /** Damage of the current move after gear scaling. A move may DAMPEN how much
+   * gear affects it (gearScale < 1) so a super doesn't double-dip the GL5 mul. */
   scaledDamage(): number {
     if (!this.move) return 0;
-    return Math.round(this.def.moves[this.move].hit.damage * this.gearSpec.damageMul);
+    const m = this.def.moves[this.move];
+    const scale = m.gearScale ?? 1;
+    const mul = 1 + (this.gearSpec.damageMul - 1) * scale;
+    return Math.round(m.hit.damage * mul);
   }
 
   // ---- throws ------------------------------------------------------------

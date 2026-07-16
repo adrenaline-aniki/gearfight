@@ -109,6 +109,10 @@ export interface MoveData {
   /** forward self-movement (px/frame) applied during the move's active window -
    * for dashing/rushing attacks (e.g. Wizel's オーバーシフト・ラッシュ). */
   advance?: number;
+  /** how strongly gear scales THIS move's damage (0..1, default 1 = full gear
+   * scaling). Effective mul = 1 + (gearDamageMul - 1) * gearScale. Lower it so a
+   * big committal move (a super) doesn't get a brutal double-dip from high gear. */
+  gearScale?: number;
   /** command grab: on the active frame the engine attempts a grab (unblockable,
    * ignores the melee hitbox) within `range`, techable within `techWindow`. */
   grab?: { range: number; techWindow: number };

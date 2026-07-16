@@ -114,6 +114,9 @@ export const MOVES: Record<string, MoveData> = {
     hitbox: { x: 4, y: 10, w: 42, h: 38 },
     motion: '236236', button: 'special', meterCost: 100, superFlash: 30,
     multiHit: { hits: 7, interval: 3 },
+    // a full-meter super shouldn't ALSO get the full GL5 double-dip: dampen its
+    // gear scaling so it's a strong-but-fair reward, not a 46%-of-health swing.
+    gearScale: 0.5,
     hit: { damage: 30, hitstun: 10, blockstun: 8, hitstop: 5, pushbackHit: 1, pushbackBlock: 2, guard: 'mid', chip: 0.15 },
   },
 };

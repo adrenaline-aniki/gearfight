@@ -89,6 +89,10 @@ export class TrainingScene extends Phaser.Scene {
   private dummyMode: DummyMode = 'cpu';
   private dummyBtn?: Phaser.GameObjects.Text;
   private p2Keyboard = false; // true = local 2P on keyboard instead of dummy
+  // Debug hit/hurt/push boxes: OFF by default (product look); toggle with the
+  // 判定 button or the B key for lab work.
+  private showBoxes = false;
+  private boxBtn?: Phaser.GameObjects.Text;
 
   // match system: best-of-3 rounds, 60s timer, KO / time-over judgement.
   private p1def!: CharacterDef;
@@ -205,7 +209,7 @@ export class TrainingScene extends Phaser.Scene {
 
     // debug HUD (below the coaching panel so they don't overlap)
     this.hudP1 = this.add.text(4, 62, '', { fontFamily: PIXEL_FONT, fontSize: '10px', color: '#8fd6ff' }).setResolution(2);
-    this.hudP2 = this.add.text(GAME_WIDTH - 4, 26, '', { fontFamily: PIXEL_FONT, fontSize: '10px', color: '#ffb38f' })
+    this.hudP2 = this.add.text(GAME_WIDTH - 4, 32, '', { fontFamily: PIXEL_FONT, fontSize: '10px', color: '#ffb38f' })
       .setOrigin(1, 0).setResolution(2);
 
     this.add.text(GAME_WIDTH / 2, 4, 'TRAINING — 箱表示 v3', { fontFamily: PIXEL_FONT, fontSize: '10px', color: '#ffffff' })
@@ -217,6 +221,13 @@ export class TrainingScene extends Phaser.Scene {
     }).setOrigin(0.5, 0).setResolution(2).setInteractive({ useHandCursor: true });
     this.dummyBtn.on('pointerdown', () => this.cycleDummy());
     this.refreshDummyBtn();
+
+    // 判定ボックス表示トグル (lab view). Default off = product look.
+    this.boxBtn = this.add.text(GAME_WIDTH / 2, 28, '', {
+      fontFamily: PIXEL_FONT, fontSize: '10px', color: '#fff', backgroundColor: '#357', padding: { x: 6, y: 1 },
+    }).setOrigin(0.5, 0).setResolution(2).setInteractive({ useHandCursor: true });
+    this.boxBtn.on('pointerdown', () => { this.showBoxes = !this.showBoxes; this.refreshBoxBtn(); });
+    this.refreshBoxBtn();
 
     // Match controls / HUD.
     this.matchBtn = this.add.text(GAME_WIDTH - 6, 4, '試合開始 ▶', {
@@ -253,6 +264,7 @@ export class TrainingScene extends Phaser.Scene {
     this.setupStick();
 
     this.input.keyboard?.on('keydown-ESC', () => this.scene.start(this.returnScene));
+    this.input.keyboard?.on('keydown-H', () => { this.showBoxes = !this.showBoxes; this.refreshBoxBtn(); });
 
     // "← 戻る" button (touch): return to editor or mode select.
     this.add.text(4, 4, '← 戻る', { fontFamily: PIXEL_FONT, fontSize: '10px', color: '#aabbcc' })
@@ -382,6 +394,10 @@ export class TrainingScene extends Phaser.Scene {
       : this.dummyMode === 'cpu' ? 'CPU:攻める'
       : this.dummyMode === 'guard' ? 'CPU:ガード' : 'CPU:棒立ち';
     this.dummyBtn.setText(`相手 ▶ ${label}`);
+  }
+
+  private refreshBoxBtn() {
+    this.boxBtn?.setText(this.showBoxes ? '判定:表示' : '判定:非表示');
   }
 
   // ---- virtual analog stick (movement) ----------------------------------
@@ -776,10 +792,12 @@ export class TrainingScene extends Phaser.Scene {
     this.drawFighter(this.engine.p1, 0x4488ff, 0, RIG_CHARS[0]);
     this.drawFighter(this.engine.p2, 0xff8844, 1, RIG_CHARS[1]);
 
-    // hitboxes on top (red), from whichever fighter is attacking
-    for (const f of [this.engine.p1, this.engine.p2]) {
-      const hb = f.getHitboxWorld();
-      if (hb) this.strokeWorld(g, hb, 0xff3344, 0.35, 0xff3344);
+    // hitboxes on top (red), from whichever fighter is attacking — lab overlay only
+    if (this.showBoxes) {
+      for (const f of [this.engine.p1, this.engine.p2]) {
+        const hb = f.getHitboxWorld();
+        if (hb) this.strokeWorld(g, hb, 0xff3344, 0.35, 0xff3344);
+      }
     }
 
     // gear-shot projectiles: a spinning gear (bigger at higher gear)
@@ -793,8 +811,13 @@ export class TrainingScene extends Phaser.Scene {
     this.drawHitFx();
     this.drawHealth();
     this.drawGearPanel();
-    this.hudP1.setText(this.describe(this.engine.p1));
-    this.hudP2.setText(this.describe(this.engine.p2));
+    // the raw state read-out is a lab tool - only show it with the box overlay.
+    this.hudP1.setVisible(this.showBoxes);
+    this.hudP2.setVisible(this.showBoxes);
+    if (this.showBoxes) {
+      this.hudP1.setText(this.describe(this.engine.p1));
+      this.hudP2.setText(this.describe(this.engine.p2));
+    }
     this.drawMatchHud();
     this.drawPerfectShift();
   }
@@ -1025,8 +1048,9 @@ export class TrainingScene extends Phaser.Scene {
   }
 
   /** Debug/labo overlay: faint pushbox + blue hurtboxes (kept separate so the
-   * knockdown early-return can still show them). */
+   * knockdown early-return can still show them). Hidden unless the lab toggle is on. */
   private drawBoxes(f: CombatFighter, push: { xmin: number; xmax: number; ymin: number; ymax: number }) {
+    if (!this.showBoxes) return;
     this.strokeWorld(this.gfx, push, 0xffcc33, 0.0, 0xffcc33, 0.35);
     for (const hurt of f.getHurtboxesWorld()) {
       this.strokeWorld(this.gfx, hurt, 0x33aaff, 0.10, 0x33aaff);
@@ -1095,6 +1119,19 @@ export class TrainingScene extends Phaser.Scene {
     };
     heat(6, 150, this.engine.p1, false);
     heat(GAME_WIDTH - 156, 150, this.engine.p2, true);
+
+    // SUPER meter (below the cluster): fills to 100, then pulses gold to say "撃てる".
+    const meter = (x: number, w: number, f: CombatFighter, rightAlign: boolean) => {
+      g.fillStyle(0x201a2c, 1); g.fillRect(x, 25, w, 3);
+      const full = f.meter >= 100;
+      const pulse = full ? 0.6 + 0.4 * Math.abs(Math.sin(this.time.now / 120)) : 1;
+      g.fillStyle(full ? 0xffe14a : 0xc060ff, pulse);
+      const fw = Math.max(0, Math.min(w, Math.round(w * (f.meter / 100))));
+      g.fillRect(rightAlign ? x + w - fw : x, 25, fw, 3);
+      g.lineStyle(1, full ? 0xffe14a : 0x6a3aa0, 0.9); g.strokeRect(x, 25, w, 3);
+    };
+    meter(6, 150, this.engine.p1, false);
+    meter(GAME_WIDTH - 156, 150, this.engine.p2, true);
   }
 
   /** The gear coaching panel for P1: a lit 5-notch ladder coloured cool->hot, the

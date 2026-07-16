@@ -148,6 +148,9 @@ export function makeGanrock(): CharacterDef {
     id: 'super', name: 'トルクブレイカー', startup: 10, active: 5, recovery: 30,
     hitbox: { x: 4, y: 8, w: 46, h: 46 },
     motion: '236236', button: 'special', meterCost: 100, superFlash: 30,
+    // one big blow already; keep a beefier gear bonus than ギアマックス (it IS the
+    // power type) but still dampened so GL5 doesn't make it an instant 40%+.
+    gearScale: 0.6,
     hit: { damage: 150, hitstun: 24, blockstun: 18, hitstop: 12, pushbackHit: 4, pushbackBlock: 10, guard: 'mid', chip: 0.2, knockdown: true, kdFrames: 46 },
   };
   // dpunch slot -> ライジングトルク: a slow, heavy rising smash (its own move, not
