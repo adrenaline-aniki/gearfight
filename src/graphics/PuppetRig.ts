@@ -24,7 +24,11 @@ export interface RigData {
 
 interface Bone { name: string; part: string; pivot: [number, number]; children?: Bone[]; }
 
-// z-order = array order (back -> front). Legs are 2-bone (thigh -> shin knee).
+// The bone TREE (names + hierarchy + z-order) is the same for every humanoid
+// character. Only the joint PIVOTS differ per character - those come from the
+// character's rig.json (parts[].pivot, looked up by part name). z-order = array
+// order (back -> front). Legs are 2-bone (thigh -> shin knee), the front arm too
+// (upper -> forearm elbow). `pivot` here is only a fallback if the data lacks it.
 const BONES: Bone[] = [
   { name: 'legL', part: 'legL_thigh', pivot: [192, 466], children: [{ name: 'legLShin', part: 'legL_shin', pivot: [150, 588] }] },
   { name: 'legR', part: 'legR_thigh', pivot: [316, 466], children: [{ name: 'legRShin', part: 'legR_shin', pivot: [352, 588] }] },
@@ -39,27 +43,33 @@ export class PuppetRig {
   private nodes: Record<string, Phaser.GameObjects.Container> = {};
   private ch: number;
   private footX: number; private footY: number;
+  private pivotByPart: Record<string, [number, number]> = {};
   private walkT = 0;
   private clock = 0;
 
   constructor(scene: Phaser.Scene, data: RigData, texPrefix: string, depth = 0) {
     this.ch = data.canvas[1];
     this.footX = data.footAnchor[0]; this.footY = data.footAnchor[1];
+    for (const p of data.parts) this.pivotByPart[p.name] = p.pivot;
     this.root = scene.add.container(0, 0).setDepth(depth).setVisible(false);
     for (const b of BONES) this.build(scene, b, this.root, [0, 0], texPrefix);
+  }
+
+  private pivotOf(bone: Bone): [number, number] {
+    return this.pivotByPart[bone.part] ?? bone.pivot;
   }
 
   /** Build a bone: a container at (pivot - parentPivot) holding the part image,
    * then recurse into children. All part images use origin (0,0) offset by the
    * bone's own canvas pivot, so at rest the canvas maps 1:1. */
   private build(scene: Phaser.Scene, bone: Bone, parent: Phaser.GameObjects.Container, parentPivot: [number, number], pre: string) {
-    const [px, py] = bone.pivot;
+    const [px, py] = this.pivotOf(bone);
     const c = scene.add.container(px - parentPivot[0], py - parentPivot[1]);
     const img = scene.add.image(-px, -py, `${pre}${bone.part}`).setOrigin(0, 0);
     c.add(img);
     parent.add(c);
     this.nodes[bone.name] = c;
-    for (const ch of bone.children ?? []) this.build(scene, ch, c, bone.pivot, pre);
+    for (const ch of bone.children ?? []) this.build(scene, ch, c, [px, py], pre);
   }
 
   setVisible(v: boolean) { this.root.setVisible(v); }
