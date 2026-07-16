@@ -81,24 +81,34 @@ export class PuppetRig {
 
   // ---- posing --------------------------------------------------------------
 
+  /** Alternating leg stride (used for forward walk AND backpedal). Sets the leg
+   * angles into A and returns the vertical bob. `armSwing` off preserves guard
+   * arms while backpedaling. */
+  private stride(A: Record<string, number>, armSwing: boolean): number {
+    this.walkT += 0.22;
+    const p = this.walkT;
+    A.legR = 0.44 * Math.sin(p);
+    A.legL = 0.44 * Math.sin(p + Math.PI);
+    A.legRShin = 0.6 * Math.max(0, -Math.sin(p));           // flex knee on back-swing
+    A.legLShin = 0.6 * Math.max(0, -Math.sin(p + Math.PI));
+    if (armSwing) { A.armR = -0.10 * Math.sin(p); A.armL = -0.13 * Math.sin(p + Math.PI); }
+    return Math.abs(Math.sin(p)) * 4;
+  }
+
   private poseFor(f: CombatFighter): { angles: Record<string, number>; dx?: number; dy?: number; squashY?: number } {
     const A: Record<string, number> = {};
+    // moving on the ground while not committed to a move = walking (either way)
+    const moving = f.isGrounded() && Math.abs(f.vx) > 0.15;
     switch (f.phase) {
       case 'walk': {
-        this.walkT += 0.22;
-        const p = this.walkT;
-        A.legR = 0.44 * Math.sin(p);
-        A.legL = 0.44 * Math.sin(p + Math.PI);
-        A.legRShin = 0.6 * Math.max(0, -Math.sin(p));           // flex knee on back-swing
-        A.legLShin = 0.6 * Math.max(0, -Math.sin(p + Math.PI));
-        A.armR = -0.10 * Math.sin(p);
-        A.armL = -0.13 * Math.sin(p + Math.PI);
-        return { angles: A, dy: Math.abs(Math.sin(p)) * 4 };
+        return { angles: A, dy: this.stride(A, true) };
       }
       case 'crouch': case 'crouchblock': {
-        A.legR = 0.35; A.legL = -0.35; A.legRShin = 0.9; A.legLShin = 0.9; // deep knee bend
-        A.head = 0.05;
-        return { angles: A, squashY: 0.82 };
+        // real crouch read: deep splayed knee-bend + forward lean, not a uniform
+        // shrink. Feet stay planted (squash) but the legs visibly fold.
+        A.legR = 0.55; A.legL = -0.55; A.legRShin = 1.15; A.legLShin = 1.15;
+        A.torso = 0.2; A.head = 0.14; A.armR = -0.15;
+        return { angles: A, squashY: 0.82, dx: 4 };
       }
       case 'jumpsquat': case 'air': {
         A.legR = -0.2; A.legL = 0.2; A.legRShin = 0.9; A.legLShin = 0.5; A.armL = -0.3; A.armR = -0.15;
@@ -106,6 +116,8 @@ export class PuppetRig {
       }
       case 'block': {
         A.armR = -0.55; A.armL = -0.2; A.head = 0.04;
+        // retreating (holding back) is the guard-ready phase - still step the legs
+        if (moving) return { angles: A, dy: this.stride(A, false) };
         return { angles: A };
       }
       case 'attack': case 'airattack': {
