@@ -6,6 +6,7 @@ import { EMPTY_COMMAND, type CommandInput } from '../combat/types';
 import { makeDefaultCharacter, cloneCharacter, type CharacterDef } from '../combat/characterDef';
 import { loadCharacter } from '../combat/characterStore';
 import { CombatAI, type DummyMode } from '../combat/CombatAI';
+import { PuppetRig, type RigData } from '../graphics/PuppetRig';
 
 // GEAR FIGHT — combat rebuild (Phase 1), presentation layer.
 //
@@ -104,6 +105,8 @@ export class TrainingScene extends Phaser.Scene {
   // sprite-skin layer: one image per fighter slot. If a pose texture exists the
   // fighter is drawn as that sprite; otherwise we fall back to the gear-mech.
   private skinImgs: Phaser.GameObjects.Image[] = [];
+  // cut-out puppet rigs (one per fighter slot) for characters that have rig art
+  private rigs: (PuppetRig | undefined)[] = [];
 
   constructor() {
     super('TrainingScene');
@@ -124,10 +127,17 @@ export class TrainingScene extends Phaser.Scene {
         }
       }
     });
+    // Hajime puppet-rig parts (cut-out animation from the single idle drawing).
+    this.load.json('hajimeRig', 'sprites/skin/hajime/rig/rig.json');
+    this.load.once('filecomplete-json-hajimeRig', () => {
+      for (const p of ['legL', 'legR', 'torso', 'armL', 'head', 'armR']) {
+        this.load.image(`rig_hajime_${p}`, `sprites/skin/hajime/rig/${p}.png`);
+      }
+    });
     // HD cel-shaded art reads better smoothly downscaled than nearest-neighbor
-    // (which is meant for the pixel UI). Apply LINEAR to each skin texture.
+    // (which is meant for the pixel UI). Apply LINEAR to skin + rig textures.
     this.load.on('filecomplete', (key: string) => {
-      if (key.startsWith('skin_') && this.textures.exists(key)) {
+      if ((key.startsWith('skin_') || key.startsWith('rig_')) && this.textures.exists(key)) {
         this.textures.get(key).setFilter(Phaser.Textures.FilterMode.LINEAR);
       }
     });
@@ -160,6 +170,15 @@ export class TrainingScene extends Phaser.Scene {
       this.add.image(0, 0, '__DEFAULT').setVisible(false),
       this.add.image(0, 0, '__DEFAULT').setVisible(false),
     ];
+    // Build the Hajime puppet rig per slot (created here so it renders under the
+    // hitbox overlay). Falls back gracefully if the rig art didn't load.
+    const rigData = this.cache.json.get('hajimeRig') as RigData | undefined;
+    if (rigData && this.textures.exists('rig_hajime_torso')) {
+      this.rigs = [
+        new PuppetRig(this, rigData, 'rig_hajime_', 0),
+        new PuppetRig(this, rigData, 'rig_hajime_', 0),
+      ];
+    }
     this.gfx = this.add.graphics();
 
     // health bars (simple)
@@ -829,7 +848,16 @@ export class TrainingScene extends Phaser.Scene {
     const figH = push.ymax - push.ymin;
     const dir = f.facing;
 
-    // Sprite skin first; if it drew, we're done (still show debug boxes).
+    // Puppet rig takes precedence (animated cut-out from the idle drawing).
+    if (skinId === 'hajime' && this.rigs[slot]) {
+      this.skinImgs[slot]?.setVisible(false);
+      this.rigs[slot]!.sync(f, cx, feetY, figH * 1.2, f.facing);
+      this.drawBoxes(f, push);
+      return;
+    }
+    this.rigs[slot]?.setVisible(false);
+
+    // Otherwise a static sprite skin; if it drew, we're done (still show boxes).
     if (skinId && this.drawSkin(f, slot, skinId, cx, feetY, figH)) {
       this.drawBoxes(f, push);
       return;
