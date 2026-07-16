@@ -124,6 +124,13 @@ export class TrainingScene extends Phaser.Scene {
         }
       }
     });
+    // HD cel-shaded art reads better smoothly downscaled than nearest-neighbor
+    // (which is meant for the pixel UI). Apply LINEAR to each skin texture.
+    this.load.on('filecomplete', (key: string) => {
+      if (key.startsWith('skin_') && this.textures.exists(key)) {
+        this.textures.get(key).setFilter(Phaser.Textures.FilterMode.LINEAR);
+      }
+    });
   }
 
   init(data?: { def?: CharacterDef; from?: string }) {
