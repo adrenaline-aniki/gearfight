@@ -101,9 +101,29 @@ export class TrainingScene extends Phaser.Scene {
   private hitFx: { x: number; y: number; vx: number; vy: number; life: number; max: number; color: number; size: number; grav: number }[] = [];
   private koFlashed = false;
   private prevPerf: [number, number] = [0, 0];
+  // sprite-skin layer: one image per fighter slot. If a pose texture exists the
+  // fighter is drawn as that sprite; otherwise we fall back to the gear-mech.
+  private skinImgs: Phaser.GameObjects.Image[] = [];
 
   constructor() {
     super('TrainingScene');
+  }
+
+  preload() {
+    // Own loader (separate from BootScene) - set the gh-pages base and pull the
+    // optional skin manifest, then queue whatever pose PNGs it lists. Missing
+    // files just mean the mech fallback stays; nothing here is required.
+    this.load.setBaseURL(import.meta.env.BASE_URL);
+    this.load.json('skinManifest', 'sprites/skin/manifest.json');
+    this.load.once('filecomplete-json-skinManifest', () => {
+      const m = this.cache.json.get('skinManifest') as Record<string, Record<string, string>> | undefined;
+      if (!m) return;
+      for (const [id, poses] of Object.entries(m)) {
+        for (const [pose, file] of Object.entries(poses)) {
+          this.load.image(`skin_${id}_${pose}`, file);
+        }
+      }
+    });
   }
 
   init(data?: { def?: CharacterDef; from?: string }) {
@@ -128,6 +148,11 @@ export class TrainingScene extends Phaser.Scene {
     ground.fillRect(0, GROUND_Y, GAME_WIDTH, GAME_HEIGHT - GROUND_Y);
 
     this.capsuleGfx = this.add.graphics();
+    // skin sprites sit above the mech layer but below the hitbox/particle overlay
+    this.skinImgs = [
+      this.add.image(0, 0, '__DEFAULT').setVisible(false),
+      this.add.image(0, 0, '__DEFAULT').setVisible(false),
+    ];
     this.gfx = this.add.graphics();
 
     // health bars (simple)
@@ -684,8 +709,10 @@ export class TrainingScene extends Phaser.Scene {
     g.clear();
     this.capsuleGfx.clear();
 
-    this.drawFighter(this.engine.p1, 0x4488ff);
-    this.drawFighter(this.engine.p2, 0xff8844);
+    // P1 is Hajime; P2 uses the Hajime skin too for now (mirror-match) so we can
+    // see facing/flip. Falls back to the mech when a pose texture is absent.
+    this.drawFighter(this.engine.p1, 0x4488ff, 0, 'hajime');
+    this.drawFighter(this.engine.p2, 0xff8844, 1, 'hajime');
 
     // hitboxes on top (red), from whichever fighter is attacking
     for (const f of [this.engine.p1, this.engine.p2]) {
@@ -744,18 +771,69 @@ export class TrainingScene extends Phaser.Scene {
     pip(GAME_WIDTH - 10, this.p2Wins >= 1, 0xff9966); pip(GAME_WIDTH - 18, this.p2Wins >= 2, 0xff9966);
   }
 
-  private drawFighter(f: CombatFighter, capsuleColor: number) {
-    // A readable GEAR-MECH figure (placeholder art, no external sprite yet):
-    // segmented legs/torso/arm drawn over the pushbox footprint, a chest gear
-    // that spins faster in higher gears, and an arm that extends on attacks.
-    // Purely visual - the hitboxes/hurtboxes below are unchanged.
-    const cg = this.capsuleGfx;
+  /** Map an engine phase/move to a skin pose id (the sprite-sheet slot name). */
+  private skinPose(f: CombatFighter): string {
+    switch (f.phase) {
+      case 'attack': case 'airattack': {
+        const m = f.move ?? '';
+        if (m === 'throw') return 'throw';
+        if (m === 'fireball') return 'fireball';
+        if (m === 'dpunch') return 'dpunch';
+        if (m === 'super') return 'super';
+        return m.includes('Heavy') ? 'attackHeavy' : 'attackLight';
+      }
+      case 'walk': return 'walk';
+      case 'crouch': case 'crouchblock': return 'crouch';
+      case 'jumpsquat': case 'air': return 'jump';
+      case 'block': return 'block';
+      case 'hitstun': case 'blockstun': return 'hitstun';
+      case 'knockdown': return 'knockdown';
+      case 'dizzy': return 'dizzy';
+      default: return 'idle';
+    }
+  }
+
+  /** Draw the fighter as a skin sprite if a matching pose texture is loaded.
+   * Returns true if it drew a sprite (so the mech fallback is skipped). */
+  private drawSkin(f: CombatFighter, slot: number, skinId: string, cx: number, feetY: number, figH: number): boolean {
+    const img = this.skinImgs[slot];
+    if (!img) return false;
+    const pose = this.skinPose(f);
+    const exact = `skin_${skinId}_${pose}`;
+    const idle = `skin_${skinId}_idle`;
+    const key = this.textures.exists(exact) ? exact : this.textures.exists(idle) ? idle : null;
+    if (!key) { img.setVisible(false); return false; }
+    const src = this.textures.get(key).getSourceImage() as { height: number };
+    const targetH = figH * 1.2; // sprites read a touch taller than the hurtbox
+    img.setTexture(key);
+    img.setOrigin(0.5, 1);              // feet-anchored
+    img.setScale(src.height ? targetH / src.height : 1);
+    img.setFlipX(f.facing < 0);         // authored right-facing; flip for P2 side
+    img.setPosition(cx, feetY);
+    img.setVisible(true);
+    return true;
+  }
+
+  private drawFighter(f: CombatFighter, capsuleColor: number, slot = 0, skinId = '') {
     const push = f.getPushbox();
     const cx = (push.xmin + push.xmax) / 2;
     const fw = push.xmax - push.xmin;
     const feetY = GROUND_Y - push.ymin; // screen y of feet (up = -y in this space)
     const figH = push.ymax - push.ymin;
     const dir = f.facing;
+
+    // Sprite skin first; if it drew, we're done (still show debug boxes).
+    if (skinId && this.drawSkin(f, slot, skinId, cx, feetY, figH)) {
+      this.drawBoxes(f, push);
+      return;
+    }
+    if (this.skinImgs[slot]) this.skinImgs[slot].setVisible(false);
+
+    // A readable GEAR-MECH figure (placeholder art, no external sprite yet):
+    // segmented legs/torso/arm drawn over the pushbox footprint, a chest gear
+    // that spins faster in higher gears, and an arm that extends on attacks.
+    // Purely visual - the hitboxes/hurtboxes below are unchanged.
+    const cg = this.capsuleGfx;
 
     // state accent color (the "energy" read); chassis stays the player color.
     const chassis = capsuleColor;
