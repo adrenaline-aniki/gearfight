@@ -679,27 +679,86 @@ export class TrainingScene extends Phaser.Scene {
   }
 
   private drawFighter(f: CombatFighter, capsuleColor: number) {
-    // Body = pushbox footprint, tinted BY STATE so the placeholder still reads
-    // clearly: attacking = bright, blocking = cyan, hit/knockdown = red, else base.
+    // A readable GEAR-MECH figure (placeholder art, no external sprite yet):
+    // segmented legs/torso/arm drawn over the pushbox footprint, a chest gear
+    // that spins faster in higher gears, and an arm that extends on attacks.
+    // Purely visual - the hitboxes/hurtboxes below are unchanged.
     const cg = this.capsuleGfx;
     const push = f.getPushbox();
-    const sx = push.xmin, sw = push.xmax - push.xmin;
-    const top = GROUND_Y - push.ymax, h = push.ymax - push.ymin;
-    let bodyColor = capsuleColor, alpha = 0.6;
-    if (f.phase === 'dizzy') { bodyColor = 0xffdd33; alpha = 0.8; }
-    else if (f.phase === 'attack' || f.phase === 'airattack') { bodyColor = 0xffffff; alpha = 0.85; }
-    else if (f.phase === 'block' || f.phase === 'crouchblock') bodyColor = 0x33ddff;
-    else if (f.phase === 'hitstun' || f.phase === 'blockstun' || f.phase === 'knockdown') bodyColor = 0xff4444;
-    cg.fillStyle(bodyColor, alpha);
-    cg.fillRoundedRect(sx, top, sw, h, 4);
-
-    // head disc (reads as a character; sits above the shoulders)
     const cx = (push.xmin + push.xmax) / 2;
-    cg.fillStyle(bodyColor, Math.min(1, alpha + 0.15));
-    cg.fillCircle(cx + f.facing * 1.5, top + 4, 4.5);
-    // eye/facing dot so the head clearly points forward
-    cg.fillStyle(0x0a0f14, 0.9);
-    cg.fillCircle(cx + f.facing * 3, top + 4, 1.3);
+    const fw = push.xmax - push.xmin;
+    const feetY = GROUND_Y - push.ymin; // screen y of feet (up = -y in this space)
+    const figH = push.ymax - push.ymin;
+    const dir = f.facing;
+
+    // state accent color (the "energy" read); chassis stays the player color.
+    const chassis = capsuleColor;
+    let accent = capsuleColor, flash = false;
+    if (f.phase === 'dizzy') accent = 0xffdd33;
+    else if (f.phase === 'attack' || f.phase === 'airattack') { accent = 0xffffff; flash = true; }
+    else if (f.phase === 'block' || f.phase === 'crouchblock') accent = 0x33ddff;
+    else if (f.phase === 'hitstun' || f.phase === 'blockstun' || f.phase === 'knockdown') accent = 0xff4444;
+
+    // point at `up` fraction of figure height above the feet, `fwd` px forward.
+    const P = (up: number, fwd = 0) => ({ x: cx + fwd * dir, y: feetY - up * figH });
+
+    // knocked down = a prone chassis on the floor (reads clearly as "downed").
+    if (f.phase === 'knockdown') {
+      cg.fillStyle(accent, 0.9);
+      cg.fillRoundedRect(cx - fw * 0.9, feetY - 5, fw * 1.8, 5, 2.5);
+      cg.fillStyle(TrainingScene.shade(chassis, 0.1), 1);
+      cg.fillCircle(cx - dir * fw * 0.7, feetY - 3, figH * 0.1);
+      this.drawBoxes(f, push);
+      return;
+    }
+
+    // ---- legs (back leg darker; front leg strides while walking) ----
+    const hip = P(0.44);
+    let stride = fw * 0.15;
+    if (f.phase === 'walk') stride = fw * 0.15 + Math.sin(this.time.now / 90) * fw * 0.4;
+    else if (f.phase === 'crouch' || f.phase === 'crouchblock') stride = fw * 0.6;
+    cg.lineStyle(3.2, TrainingScene.shade(chassis, -0.35), 1);
+    cg.lineBetween(hip.x, hip.y, cx - stride * 0.5, feetY);
+    cg.lineStyle(3.6, chassis, 1);
+    cg.lineBetween(hip.x, hip.y, cx + stride * 0.5, feetY);
+    cg.fillStyle(TrainingScene.shade(chassis, -0.35), 1); cg.fillCircle(cx - stride * 0.5, feetY, 1.8);
+    cg.fillStyle(chassis, 1); cg.fillCircle(cx + stride * 0.5, feetY, 2);
+
+    // ---- torso (thick capsule = the chassis) ----
+    const torsoBot = P(0.42), torsoTop = P(0.80);
+    cg.lineStyle(Math.max(6, fw * 0.9), chassis, 0.95);
+    cg.lineBetween(torsoBot.x, torsoBot.y, torsoTop.x, torsoTop.y);
+
+    // ---- chest gear: spins faster in higher gears (the theme, front & center) ----
+    const chest = P(0.6, fw * 0.05);
+    const spin = this.time.now / (640 - f.gear * 95) * (dir);
+    TrainingScene.drawGear(cg, chest.x, chest.y, Math.max(3, fw * 0.34), spin, accent);
+
+    // ---- head + forward visor eye ----
+    const head = P(0.93, fw * 0.1);
+    const hr = Math.max(3, figH * 0.11);
+    cg.fillStyle(TrainingScene.shade(chassis, 0.12), 1); cg.fillCircle(head.x, head.y, hr);
+    cg.fillStyle(flash ? 0x0a0f14 : accent, 1); cg.fillCircle(head.x + dir * hr * 0.4, head.y, hr * 0.45);
+
+    // ---- arm: extends toward the live hitbox on attack, guards on block ----
+    const shoulder = P(0.78, fw * 0.12);
+    let hand: { x: number; y: number };
+    if (f.phase === 'attack' || f.phase === 'airattack') {
+      const hb = f.getHitboxWorld();
+      const reach = hb ? (dir > 0 ? hb.xmax - cx : cx - hb.xmin) : fw * 1.6;
+      const armUp = f.move === 'crouchHeavy' ? 0.12
+        : f.move === 'dpunch' ? 1.0
+        : f.move === 'jumpLight' || f.move === 'jumpHeavy' ? 0.5
+        : f.move === 'standHeavy' || f.move === 'super' ? 0.66 : 0.58;
+      hand = { x: cx + dir * Math.max(fw * 1.1, reach * 0.95), y: feetY - armUp * figH };
+    } else if (f.phase === 'block' || f.phase === 'crouchblock') {
+      hand = P(0.6, fw * 0.75); // forearm up, in front = guard
+    } else {
+      hand = P(0.5, fw * 0.5);
+    }
+    cg.lineStyle(3, flash ? 0xffffff : TrainingScene.shade(accent, -0.05), 1);
+    cg.lineBetween(shoulder.x, shoulder.y, hand.x, hand.y);
+    cg.fillStyle(accent, 1); cg.fillCircle(hand.x, hand.y, 2.4);
 
     // dizzy: orbiting "stars" over the head
     if (f.phase === 'dizzy') {
@@ -707,15 +766,41 @@ export class TrainingScene extends Phaser.Scene {
       for (let i = 0; i < 3; i++) {
         const a = t + (i * Math.PI * 2) / 3;
         cg.fillStyle(0xffee66, 0.95);
-        cg.fillCircle(cx + Math.cos(a) * 7, top - 4 + Math.sin(a) * 2.2, 1.6);
+        cg.fillCircle(head.x + Math.cos(a) * 7, head.y - hr - 2 + Math.sin(a) * 2.2, 1.6);
       }
     }
 
-    // pushbox (faint) + hurtboxes (blue) for the training/labo view
+    this.drawBoxes(f, push);
+  }
+
+  /** Debug/labo overlay: faint pushbox + blue hurtboxes (kept separate so the
+   * knockdown early-return can still show them). */
+  private drawBoxes(f: CombatFighter, push: { xmin: number; xmax: number; ymin: number; ymax: number }) {
     this.strokeWorld(this.gfx, push, 0xffcc33, 0.0, 0xffcc33, 0.35);
     for (const hurt of f.getHurtboxesWorld()) {
       this.strokeWorld(this.gfx, hurt, 0x33aaff, 0.10, 0x33aaff);
     }
+  }
+
+  /** Lighten (amt>0) or darken (amt<0) a 0xRRGGBB color toward white/black. */
+  private static shade(color: number, amt: number): number {
+    const r = (color >> 16) & 0xff, g = (color >> 8) & 0xff, b = color & 0xff;
+    const mix = (c: number) => amt >= 0
+      ? Math.round(c + (255 - c) * amt)
+      : Math.round(c * (1 + amt));
+    return (mix(r) << 16) | (mix(g) << 8) | mix(b);
+  }
+
+  /** A small toothed gear (hub + N radial teeth), rotated by `ang`. */
+  private static drawGear(cg: Phaser.GameObjects.Graphics, x: number, y: number, r: number, ang: number, color: number) {
+    cg.lineStyle(1.4, color, 0.9);
+    cg.strokeCircle(x, y, r * 0.62);
+    const teeth = 8;
+    for (let i = 0; i < teeth; i++) {
+      const a = ang + (i * Math.PI * 2) / teeth;
+      cg.lineBetween(x + Math.cos(a) * r * 0.62, y + Math.sin(a) * r * 0.62, x + Math.cos(a) * r, y + Math.sin(a) * r);
+    }
+    cg.fillStyle(color, 0.9); cg.fillCircle(x, y, r * 0.24);
   }
 
   private strokeWorld(g: Phaser.GameObjects.Graphics, b: { xmin: number; xmax: number; ymin: number; ymax: number },
