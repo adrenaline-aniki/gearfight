@@ -855,8 +855,11 @@ export class TrainingScene extends Phaser.Scene {
     // Puppet rig takes precedence (animated cut-out from the idle drawing).
     if (skinId === 'hajime' && this.rigs[slot]) {
       this.skinImgs[slot]?.setVisible(false);
-      this.rigs[slot]!.sync(f, cx, feetY, figH * 1.2, f.facing);
-      if (f.phase === 'dizzy') this.drawDizzyStars(cx, feetY - figH * 1.15);
+      // Use a CONSTANT display height (standing size). figH shrinks when crouching
+      // (shorter pushbox) - scaling by it made the character shrink; the crouch is
+      // a POSE, not a smaller character.
+      this.rigs[slot]!.sync(f, cx, feetY, 54, f.facing);
+      if (f.phase === 'dizzy') this.drawDizzyStars(cx, feetY - 60);
       this.drawBoxes(f, push);
       return;
     }

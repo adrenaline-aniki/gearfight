@@ -71,7 +71,7 @@ export const MOVES: Record<string, MoveData> = {
   throw: {
     id: 'throw', name: '投げ', startup: 3, active: 2, recovery: 18,
     hitbox: { x: 0, y: 0, w: 0, h: 0 }, // unused: grab below drives it
-    grab: { range: 28, techWindow: 8 },
+    grab: { range: 40, techWindow: 8 },
     hit: {
       damage: 90, hitstun: 0, blockstun: 0, hitstop: 10,
       pushbackHit: 0, pushbackBlock: 0, knockdown: true,
@@ -95,9 +95,11 @@ export const MOVES: Record<string, MoveData> = {
   // Dragon punch (623 + heavy): invincible rising anti-air, launches, but a
   // huge whiff punish (long recovery, and it leaves the air vulnerable).
   dpunch: {
-    id: 'dpunch', name: 'アッパーシフト', startup: 4, active: 6, recovery: 30,
-    hitbox: { x: 4, y: 16, w: 24, h: 40 },
-    motion: '623', button: 'heavy', startupInvuln: 8,
+    id: 'dpunch', name: 'アッパーシフト', startup: 4, active: 8, recovery: 28,
+    // tall column covering the anti-air space (the fighter also LEAPS up, so the
+    // box rises with it - see CombatFighter dpunch leap).
+    hitbox: { x: 2, y: 8, w: 30, h: 60 },
+    motion: '623', button: 'heavy', startupInvuln: 10,
     // long hard-knockdown so landing this invincible reversal REWARDS you with
     // okizeme (was -10 on hit; now the DP user recovers first). Still -20 on block.
     hit: { damage: 100, hitstun: 22, blockstun: 16, hitstop: 10, pushbackHit: 3, pushbackBlock: 8, guard: 'mid', launch: 5, knockdown: true, kdFrames: 42 },

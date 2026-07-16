@@ -53,6 +53,8 @@ const GRAVITY = 0.42;           // px/frame^2
 const JUMPSQUAT = 3;            // grounded frames before leaving the ground
 const JUMP_H_SPEED = 2.4;       // forward/back jump horizontal travel (px/frame)
 const BACK_WALK_MUL = 0.85;     // backward walk is a touch slower than forward
+const DP_LEAP_VY = 5.8;         // アッパーシフト rise velocity (~40px up = real anti-air)
+const DP_LEAP_VX = 1.0;         // and a small forward drift into the opponent
 
 // Dizzy / stun: hits add stun; cross the threshold in a short window and you get
 // dizzied (helpless for a bit = free combo). Stun decays in neutral, and a brief
@@ -479,6 +481,14 @@ export class CombatFighter {
     const su = this.scaledStartup(m.startup);
     const rec = this.scaledRecovery(m.recovery);
     const total = su + m.active + rec;
+
+    // アッパーシフト (dpunch): a real rising anti-air. Leap up+forward on the first
+    // frame so the fighter (and its tall hitbox) climbs into a jumping opponent;
+    // gravity brings it back down into the recovery. Feet re-plant on landing.
+    if (this.move === 'dpunch') {
+      if (this.phaseFrame === 0) { this.vy = DP_LEAP_VY; this.vx = this.facing * DP_LEAP_VX; }
+      this.x += this.vx;
+    }
 
     // Cancel: once this move has connected (hit or block), its recovery can be
     // cancelled into an allowed target (normal xx normal, normal xx special xx

@@ -71,11 +71,15 @@ export class PuppetRig {
     const s = displayH / this.ch;
     const pose = this.poseFor(f);
     const sq = pose.squashY ?? 1;
-    this.root.setScale(s * facing, s * sq);
-    this.root.setPosition(
-      fx - (this.footX - (pose.dx ?? 0)) * s * facing,
-      feetY - (this.footY - (pose.dy ?? 0)) * s * sq,
-    );
+    const rot = (pose.rot ?? 0) * facing; // whole-body tilt (e.g. knockdown), pivots at the feet
+    const sx = s * facing, sy = s * sq;
+    this.root.setRotation(rot);
+    this.root.setScale(sx, sy);
+    // place so the foot anchor (+ global dx/dy) lands at (fx, feetY) after rotation
+    const ax = (this.footX - (pose.dx ?? 0)) * sx;
+    const ay = (this.footY - (pose.dy ?? 0)) * sy;
+    const cos = Math.cos(rot), sin = Math.sin(rot);
+    this.root.setPosition(fx - (cos * ax - sin * ay), feetY - (sin * ax + cos * ay));
     for (const name in this.nodes) this.nodes[name].rotation = pose.angles[name] ?? 0;
   }
 
@@ -95,7 +99,7 @@ export class PuppetRig {
     return Math.abs(Math.sin(p)) * 4;
   }
 
-  private poseFor(f: CombatFighter): { angles: Record<string, number>; dx?: number; dy?: number; squashY?: number } {
+  private poseFor(f: CombatFighter): { angles: Record<string, number>; dx?: number; dy?: number; squashY?: number; rot?: number } {
     const A: Record<string, number> = {};
     // moving on the ground while not committed to a move = walking (either way)
     const moving = f.isGrounded() && Math.abs(f.vx) > 0.15;
@@ -153,10 +157,11 @@ export class PuppetRig {
         return { angles: A, dx: -14 };
       }
       case 'knockdown': {
-        // fallen on its back: legs up, arms out, body low - not melted-flat
-        A.legR = -0.5; A.legL = -0.7; A.legRShin = 0.6; A.legLShin = 0.6;
-        A.head = -0.4; A.armL = 0.5; A.armR = -0.4; A.torso = -0.25;
-        return { angles: A, squashY: 0.55, dx: -10 };
+        // actually TIP OVER onto the back (whole body rotates ~80deg about the
+        // feet), legs bent up, arms sprawled - lying on the floor, not buried.
+        A.legR = 0.5; A.legL = 0.75; A.legRShin = 1.0; A.legLShin = 1.0;
+        A.head = 0.35; A.armL = 0.6; A.armR = 0.5;
+        return { angles: A, rot: -1.35, dx: -6 };
       }
       case 'dizzy': {
         // woozy wobble: body sways, head lolls, arms hang loose (stars drawn by
