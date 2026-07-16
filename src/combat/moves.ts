@@ -82,7 +82,7 @@ export const MOVES: Record<string, MoveData> = {
   // Fireball (236 + light): keep-away / pressure. Spawns a slow projectile;
   // long recovery so throwing one up close is risky. Chip on block.
   fireball: {
-    id: 'fireball', name: '波動ギア', startup: 12, active: 2, recovery: 30,
+    id: 'fireball', name: 'ギアショット', startup: 12, active: 2, recovery: 30,
     hitbox: { x: 0, y: 0, w: 0, h: 0 }, // unused: projectile below drives the hit
     motion: '236', button: 'light',
     projectile: {
@@ -95,7 +95,7 @@ export const MOVES: Record<string, MoveData> = {
   // Dragon punch (623 + heavy): invincible rising anti-air, launches, but a
   // huge whiff punish (long recovery, and it leaves the air vulnerable).
   dpunch: {
-    id: 'dpunch', name: '昇龍ギア', startup: 4, active: 6, recovery: 30,
+    id: 'dpunch', name: 'アッパーシフト', startup: 4, active: 6, recovery: 30,
     hitbox: { x: 4, y: 16, w: 24, h: 40 },
     motion: '623', button: 'heavy', startupInvuln: 8,
     // long hard-knockdown so landing this invincible reversal REWARDS you with

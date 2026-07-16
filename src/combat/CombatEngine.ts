@@ -32,6 +32,8 @@ export interface Projectile {
   guardBreak: boolean;
   speed: number;
   life: number;
+  gear: number;               // firing gear (drives the gear-shot's size/look)
+  spin: number;               // accumulated rotation (for the spinning-gear render)
 }
 
 // Playfield bounds in the engine's local world (x). The scene maps these to
@@ -123,11 +125,19 @@ export class CombatEngine {
       if (this.projectiles.some((p) => p.owner === owner)) continue;
       const s = f.takeProjectileSpawn();
       if (!s) continue;
+      // Gear character: a LOW gear flings a small gear fast; a HIGH gear rolls a
+      // big, slow, heavy gear (the size/speed tradeoff of the drivetrain).
+      const sizeMul = 0.7 + s.gear * 0.12;   // gear1 ~0.82  ..  gear5 ~1.3
+      const speedMul = 1.45 - s.gear * 0.16; // gear1 ~1.29  ..  gear5 ~0.65
+      const bw = s.spec.box.w * sizeMul, bh = s.spec.box.h * sizeMul;
       this.projectiles.push({
         owner, x: s.x, y: s.y, facing: s.facing,
-        box: { ...s.spec.box }, hit: s.spec.hit,
+        // keep the gear centred as it grows (expand around the box centre)
+        box: { x: s.spec.box.x - (bw - s.spec.box.w) / 2, y: s.spec.box.y - (bh - s.spec.box.h) / 2, w: bw, h: bh },
+        hit: s.spec.hit,
         damage: Math.round(s.spec.hit.damage * s.gearDamageMul),
-        guardBreak: s.gearGuardBreak, speed: s.spec.speed, life: s.spec.life,
+        guardBreak: s.gearGuardBreak, speed: s.spec.speed * speedMul, life: s.spec.life,
+        gear: s.gear, spin: 0,
       });
     }
   }
@@ -136,6 +146,7 @@ export class CombatEngine {
     const survivors: Projectile[] = [];
     for (const p of this.projectiles) {
       p.x += p.speed * p.facing;
+      p.spin += 0.35 * p.facing; // rolls as it travels (render only)
       p.life--;
       const defender = p.owner === 1 ? this.p2 : this.p1;
       const pbox = projectileWorld(p);

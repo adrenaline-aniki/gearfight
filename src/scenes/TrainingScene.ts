@@ -747,9 +747,12 @@ export class TrainingScene extends Phaser.Scene {
       if (hb) this.strokeWorld(g, hb, 0xff3344, 0.35, 0xff3344);
     }
 
-    // projectiles (fireballs) - yellow squares carrying their own hitbox
+    // gear-shot projectiles: a spinning gear (bigger at higher gear)
     for (const proj of this.engine.projectiles) {
-      this.strokeWorld(g, projectileWorld(proj), 0xffee44, 0.5, 0xffbb22);
+      const wb = projectileWorld(proj);
+      const px = (wb.xmin + wb.xmax) / 2, r = (wb.xmax - wb.xmin) / 2 + 1;
+      TrainingScene.drawGear(g, px, GROUND_Y - (wb.ymin + wb.ymax) / 2, r, proj.spin, 0xffdd33);
+      g.fillStyle(0xfff4b0, 0.9); g.fillCircle(px, GROUND_Y - (wb.ymin + wb.ymax) / 2, r * 0.28);
     }
 
     this.drawHitFx();

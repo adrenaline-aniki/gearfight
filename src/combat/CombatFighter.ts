@@ -43,6 +43,7 @@ export interface ProjectileSpawn {
   spec: import('./types').ProjectileSpec;
   gearDamageMul: number;
   gearGuardBreak: boolean;
+  gear: number; // firing gear: low = small+fast gear, high = big+slow+heavy
 }
 
 // Universal physics/rules (not per-character; the same for every fighter). The
@@ -676,6 +677,7 @@ export class CombatFighter {
     return {
       x: this.x, y: this.y, facing: this.facing, spec: m.projectile,
       gearDamageMul: this.gearSpec.damageMul, gearGuardBreak: this.gearSpec.guardBreak,
+      gear: this.gear,
     };
   }
 
