@@ -127,7 +127,10 @@ export class PuppetRig {
         return { angles: A, dx: -8 };
       }
       case 'knockdown': {
-        return { angles: A, squashY: 0.32 };
+        // fallen on its back: legs up, arms out, body low - not melted-flat
+        A.legR = -0.5; A.legL = -0.7; A.legRShin = 0.6; A.legLShin = 0.6;
+        A.head = -0.4; A.armL = 0.5; A.armR = -0.4; A.torso = -0.25;
+        return { angles: A, squashY: 0.55, dx: -10 };
       }
       case 'dizzy': {
         const w = Math.sin(this.clock / 22) * 0.12;
