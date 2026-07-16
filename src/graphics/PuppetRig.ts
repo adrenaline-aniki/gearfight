@@ -127,6 +127,15 @@ export class PuppetRig {
           A.armR = -2.1 * t; A.armRFore = 0.5 * t; A.legR = -0.3 * t; A.legRShin = 0.6 * t;
           return { angles: A, dy: -20 * t };
         }
+        if (f.move === 'throw') {                            // grab: both arms clutch forward
+          A.armR = -0.95 * t; A.armRFore = 0.85 * t; A.armL = 0.7 * t; A.head = 0.05 * t;
+          return { angles: A, dx: 8 * t };
+        }
+        if (f.move === 'super') {                            // big committed lunge
+          A.armR = -1.45 * t; A.armRFore = 1.4 * t; A.armL = -0.35 * t;
+          A.head = -0.1 * t; A.torso = 0.12 * t;
+          return { angles: A, dx: 24 * t };
+        }
         // straight punch: swing the upper arm up to horizontal AND open the elbow
         // (positive forearm) so the fist reaches far forward.
         A.armR = (heavy ? -1.25 : -1.1) * t;
@@ -135,8 +144,10 @@ export class PuppetRig {
         return { angles: A, dx: (heavy ? 18 : 13) * t };
       }
       case 'hitstun': case 'blockstun': {
-        A.head = -0.22; A.armR = 0.25; A.armL = 0.3; A.legR = -0.12; A.legRShin = 0.25;
-        return { angles: A, dx: -8 };
+        // snap the head/torso back, arms fly up - a clear flinch
+        A.head = -0.5; A.torso = -0.12; A.armR = 0.55; A.armRFore = -0.4;
+        A.armL = 0.5; A.legR = -0.18; A.legRShin = 0.35;
+        return { angles: A, dx: -14 };
       }
       case 'knockdown': {
         // fallen on its back: legs up, arms out, body low - not melted-flat
@@ -145,9 +156,13 @@ export class PuppetRig {
         return { angles: A, squashY: 0.55, dx: -10 };
       }
       case 'dizzy': {
-        const w = Math.sin(this.clock / 22) * 0.12;
-        A.head = w; A.armR = w; A.armL = -w;
-        return { angles: A, dx: Math.sin(this.clock / 30) * 6 };
+        // woozy wobble: body sways, head lolls, arms hang loose (stars drawn by
+        // the scene over the head)
+        const w = Math.sin(this.clock / 16);
+        A.head = 0.28 * w; A.torso = 0.1 * w;
+        A.armR = 0.3 + 0.15 * w; A.armL = -0.3 - 0.15 * w;
+        A.legR = 0.1 * w; A.legL = -0.1 * w;
+        return { angles: A, dx: Math.sin(this.clock / 24) * 10 };
       }
       default: {
         const b = Math.sin(this.clock / 42);

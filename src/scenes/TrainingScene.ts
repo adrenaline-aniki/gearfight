@@ -853,6 +853,7 @@ export class TrainingScene extends Phaser.Scene {
     if (skinId === 'hajime' && this.rigs[slot]) {
       this.skinImgs[slot]?.setVisible(false);
       this.rigs[slot]!.sync(f, cx, feetY, figH * 1.2, f.facing);
+      if (f.phase === 'dizzy') this.drawDizzyStars(cx, feetY - figH * 1.15);
       this.drawBoxes(f, push);
       return;
     }
@@ -951,6 +952,18 @@ export class TrainingScene extends Phaser.Scene {
     }
 
     this.drawBoxes(f, push);
+  }
+
+  /** Orbiting stars over a dizzied fighter's head (rig path skips the mech's
+   * built-in ones, so redraw them here). Uses capsuleGfx (cleared each frame). */
+  private drawDizzyStars(cx: number, topY: number) {
+    const cg = this.capsuleGfx;
+    const t = this.time.now / 200;
+    for (let i = 0; i < 3; i++) {
+      const a = t + (i * Math.PI * 2) / 3;
+      cg.fillStyle(0xffee66, 0.95);
+      cg.fillCircle(cx + Math.cos(a) * 8, topY + Math.sin(a) * 2.4, 1.8);
+    }
   }
 
   /** Debug/labo overlay: faint pushbox + blue hurtboxes (kept separate so the
