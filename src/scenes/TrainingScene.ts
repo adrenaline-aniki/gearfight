@@ -130,8 +130,9 @@ export class TrainingScene extends Phaser.Scene {
     // Hajime puppet-rig parts (cut-out animation from the single idle drawing).
     this.load.json('hajimeRig', 'sprites/skin/hajime/rig/rig.json');
     this.load.once('filecomplete-json-hajimeRig', () => {
-      for (const p of ['legL', 'legR', 'torso', 'armL', 'head', 'armR']) {
-        this.load.image(`rig_hajime_${p}`, `sprites/skin/hajime/rig/${p}.png`);
+      const rd = this.cache.json.get('hajimeRig') as RigData | undefined;
+      for (const part of rd?.parts ?? []) {
+        this.load.image(`rig_hajime_${part.name}`, `sprites/skin/hajime/rig/${part.name}.png`);
       }
     });
     // HD cel-shaded art reads better smoothly downscaled than nearest-neighbor

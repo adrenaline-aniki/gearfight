@@ -31,7 +31,7 @@ const BONES: Bone[] = [
   { name: 'torso', part: 'torso', pivot: [260, 458] },
   { name: 'armL', part: 'armL', pivot: [168, 250] },
   { name: 'head', part: 'head', pivot: [256, 197] },
-  { name: 'armR', part: 'armR', pivot: [372, 258] },
+  { name: 'armR', part: 'armR_upper', pivot: [372, 258], children: [{ name: 'armRFore', part: 'armR_fore', pivot: [408, 340] }] },
 ];
 
 export class PuppetRig {
@@ -87,13 +87,13 @@ export class PuppetRig {
       case 'walk': {
         this.walkT += 0.22;
         const p = this.walkT;
-        A.legR = 0.34 * Math.sin(p);
-        A.legL = 0.34 * Math.sin(p + Math.PI);
-        A.legRShin = 0.5 * Math.max(0, -Math.sin(p));           // flex knee on back-swing
-        A.legLShin = 0.5 * Math.max(0, -Math.sin(p + Math.PI));
+        A.legR = 0.44 * Math.sin(p);
+        A.legL = 0.44 * Math.sin(p + Math.PI);
+        A.legRShin = 0.6 * Math.max(0, -Math.sin(p));           // flex knee on back-swing
+        A.legLShin = 0.6 * Math.max(0, -Math.sin(p + Math.PI));
         A.armR = -0.10 * Math.sin(p);
         A.armL = -0.13 * Math.sin(p + Math.PI);
-        return { angles: A, dy: Math.abs(Math.sin(p)) * 3 };
+        return { angles: A, dy: Math.abs(Math.sin(p)) * 4 };
       }
       case 'crouch': case 'crouchblock': {
         A.legR = 0.35; A.legL = -0.35; A.legRShin = 0.9; A.legLShin = 0.9; // deep knee bend
@@ -111,10 +111,16 @@ export class PuppetRig {
       case 'attack': case 'airattack': {
         const t = Math.min(1, Math.max(0, (f.phaseFrame - 1) / 5));
         const heavy = (f.move ?? '').includes('Heavy') || f.move === 'dpunch' || f.move === 'super';
-        if (f.move === 'dpunch') { A.armR = -1.7 * t; A.legR = -0.3 * t; A.legRShin = 0.6 * t; return { angles: A, dy: -20 * t }; }
-        A.armR = (heavy ? -1.35 : -1.15) * t;
+        if (f.move === 'dpunch') {                          // rising uppercut
+          A.armR = -2.1 * t; A.armRFore = 0.5 * t; A.legR = -0.3 * t; A.legRShin = 0.6 * t;
+          return { angles: A, dy: -20 * t };
+        }
+        // straight punch: swing the upper arm up to horizontal AND open the elbow
+        // (positive forearm) so the fist reaches far forward.
+        A.armR = (heavy ? -1.25 : -1.1) * t;
+        A.armRFore = (heavy ? 1.25 : 1.05) * t;
         A.armL = 0.25 * t; A.head = -0.05 * t;
-        return { angles: A, dx: (heavy ? 10 : 6) * t };
+        return { angles: A, dx: (heavy ? 18 : 13) * t };
       }
       case 'hitstun': case 'blockstun': {
         A.head = -0.22; A.armR = 0.25; A.armL = 0.3; A.legR = -0.12; A.legRShin = 0.25;
