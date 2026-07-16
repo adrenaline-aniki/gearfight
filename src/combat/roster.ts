@@ -31,7 +31,7 @@ export const ROSTER: RosterEntry[] = [
   },
   {
     id: 'ganrock', name: 'ガンロック', make: makeGanrock,
-    blurb: 'パワー型。GL4-5で一撃必殺、重いが熱暴走に注意。',
+    rig: 'ganrock', blurb: 'パワー型。GL4-5で一撃必殺、重いが熱暴走に注意。',
   },
 ];
 
