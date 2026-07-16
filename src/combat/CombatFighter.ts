@@ -72,6 +72,12 @@ const MAX_METER = 100;
 const KNOCKDOWN_FRAMES = 26;
 const WAKEUP_INVULN = 6;
 const GEAR_SHIFT_LOCK = 8;      // frames you can't act right after a shift (the risk window)
+// Perfect Shift ("double-clutch"): tap the gear button AGAIN within this window
+// right after shifting to cancel the shift-lock and cool the drivetrain - the
+// execution-reward that ties the gear theme to skill (and is touch-friendly: a
+// quick double-tap of G+/G-).
+const CLUTCH_WINDOW = 7;
+const PERFECT_SHIFT_COOL = 35; // heat bled off by a perfect shift
 const GROUND_Y = 0;             // feet baseline in this local world; scene offsets it
 const BUTTON_BUFFER = 4;        // frames an attack press stays live (input leniency)
 const THROW_TECH_BUFFER = 8;    // frames a throw press stays live (also the tech window)
@@ -99,6 +105,8 @@ function dirMatches(actual: number, want: number): boolean {
 export interface StepResult {
   /** a shift just completed this frame (for perfect-shift FX / heat) */
   shifted?: boolean;
+  /** a perfect shift (double-clutch) landed this frame */
+  perfectShift?: boolean;
 }
 
 let _uid = 0;
@@ -116,6 +124,8 @@ export class CombatFighter {
   gear = 1;
   heat = 0;              // 0..HEAT_MAX; high gear heats, low gear cools
   overheatTimer = 0;     // >0 = overheated: forced to low gear, can't up-shift
+  private clutchTimer = 0; // >0 = perfect-shift window is open (double-tap to clutch)
+  perfectShiftFx = 0;    // >0 = a perfect shift just landed (for the callout)
 
   phase: FighterPhase = 'idle';
   phaseFrame = 0;    // frames spent in the current phase/move
@@ -216,17 +226,36 @@ export class CombatFighter {
       this.phase !== 'blockstun' && this.phase !== 'knockdown' && this.phase !== 'dizzy';
     if (canTurn) this.facing = opponentX >= this.x ? 1 : -1;
 
+    // Perfect Shift (double-clutch): a second gear tap inside the window that
+    // opened on the last shift cancels the shift-lock and cools the drivetrain.
+    // Checked BEFORE the normal shift (using last frame's window) so the initial
+    // tap can't double-trigger it.
+    if (this.perfectShiftFx > 0) this.perfectShiftFx--;
+    if (this.clutchTimer > 0) {
+      if (input.gearUp || input.gearDown) {
+        this.shiftLock = 0;
+        this.heat = Math.max(0, this.heat - PERFECT_SHIFT_COOL);
+        this.clutchTimer = 0;
+        this.perfectShiftFx = 8;
+        result.perfectShift = true;
+      } else {
+        this.clutchTimer--;
+      }
+    }
+
     // Gear shifting is always allowed except during hitstun/knockdown/attack;
     // it's the risk-vs-reward core, so it deliberately locks you briefly.
-    if (this.shiftLock === 0 && this.canShift()) {
+    if (this.shiftLock === 0 && this.canShift() && !result.perfectShift) {
       // Can't up-shift while overheated - the drivetrain is cooked and forced low.
       if (input.gearUp && this.gear < 5 && this.overheatTimer === 0) {
         this.gear++;
         this.shiftLock = GEAR_SHIFT_LOCK;
+        this.clutchTimer = CLUTCH_WINDOW;
         result.shifted = true;
       } else if (input.gearDown && this.gear > 1) {
         this.gear--;
         this.shiftLock = GEAR_SHIFT_LOCK;
+        this.clutchTimer = CLUTCH_WINDOW;
         result.shifted = true;
       }
     }

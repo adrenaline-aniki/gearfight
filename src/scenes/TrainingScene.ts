@@ -95,6 +95,8 @@ export class TrainingScene extends Phaser.Scene {
   private centerText?: Phaser.GameObjects.Text;
   private timerText?: Phaser.GameObjects.Text;
   private pipsGfx?: Phaser.GameObjects.Graphics;
+  private perfectText?: Phaser.GameObjects.Text; // "PERFECT SHIFT!" callout
+  private perfectShown = 0;                       // render frames left to show it
 
   constructor() {
     super('TrainingScene');
@@ -155,8 +157,14 @@ export class TrainingScene extends Phaser.Scene {
       stroke: '#000', strokeThickness: 4, align: 'center',
     }).setOrigin(0.5).setResolution(2).setDepth(50);
 
+    // "PERFECT SHIFT!" execution-reward callout (double-clutch gear tap).
+    this.perfectText = this.add.text(GAME_WIDTH / 2, 48, 'PERFECT SHIFT!', {
+      fontFamily: PIXEL_FONT, fontSize: '20px', color: '#7affc8', fontStyle: 'bold',
+      stroke: '#0a3a28', strokeThickness: 4,
+    }).setOrigin(0.5).setResolution(2).setDepth(60).setVisible(false);
+
     this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 10,
-      'スティック移動  Z弱 X強 V投げ(密着)  236波動 623昇龍  タッチ:投/波/昇/超',
+      'スティック=移動/ジャンプ/しゃがみ ｜ 弱 強 投 ｜ 波 昇 超=必殺 ｜ G+/G-=ギア（2回押し＝パーフェクト）',
       { fontFamily: PIXEL_FONT, fontSize: '10px', color: '#556677' }).setOrigin(0.5, 1).setResolution(2);
 
     this.setupKeyboard();
@@ -629,6 +637,25 @@ export class TrainingScene extends Phaser.Scene {
     this.hudP1.setText(this.describe(this.engine.p1));
     this.hudP2.setText(this.describe(this.engine.p2));
     this.drawMatchHud();
+    this.drawPerfectShift();
+  }
+
+  /** Flash "PERFECT SHIFT!" when either fighter lands a double-clutch. The engine
+   * sets perfectShiftFx=8 on the frame it happens; we hold the callout ~28 render
+   * frames so it reads even at a glance, pulsing its alpha. */
+  private drawPerfectShift() {
+    const t = this.perfectText;
+    if (!t) return;
+    if (this.engine.p1.perfectShiftFx > 0 || this.engine.p2.perfectShiftFx > 0) {
+      this.perfectShown = 28;
+    }
+    if (this.perfectShown > 0) {
+      this.perfectShown--;
+      t.setVisible(true);
+      t.setAlpha(0.55 + 0.45 * Math.abs(Math.sin(this.perfectShown * 0.5)));
+    } else if (t.visible) {
+      t.setVisible(false);
+    }
   }
 
   private drawMatchHud() {
