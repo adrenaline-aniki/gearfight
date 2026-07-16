@@ -90,6 +90,16 @@ export function makeWizel(): CharacterDef {
     advance: 2.4,
     hit: { damage: 24, hitstun: 12, blockstun: 8, hitstop: 4, pushbackHit: 0, pushbackBlock: 2, guard: 'mid', chip: 0.1 },
   };
+  // dpunch slot -> ライジングエッジ: a fast, low-commitment rising BLADE slash (its
+  // own move, not Hajime's アッパーシフト). Speed identity: quicker startup/recovery
+  // and a shorter hop, but lighter and less launch - a nimble get-off-me, not a big
+  // reversal. The rig slashes it with the back-arm blade (see PuppetRig bladeArm).
+  def.moves.dpunch = {
+    id: 'dpunch', name: 'ライジングエッジ', startup: 4, active: 8, recovery: 22,
+    hitbox: { x: 2, y: 10, w: 26, h: 52 },
+    motion: '623', button: 'heavy', startupInvuln: 8,
+    hit: { damage: 70, hitstun: 20, blockstun: 14, hitstop: 9, pushbackHit: 3, pushbackBlock: 8, guard: 'mid', launch: 4.4, knockdown: true, kdFrames: 34 },
+  };
   return def;
 }
 
@@ -139,6 +149,16 @@ export function makeGanrock(): CharacterDef {
     hitbox: { x: 4, y: 8, w: 46, h: 46 },
     motion: '236236', button: 'special', meterCost: 100, superFlash: 30,
     hit: { damage: 150, hitstun: 24, blockstun: 18, hitstop: 12, pushbackHit: 4, pushbackBlock: 10, guard: 'mid', chip: 0.2, knockdown: true, kdFrames: 46 },
+  };
+  // dpunch slot -> ライジングトルク: a slow, heavy rising smash (its own move, not
+  // Hajime's アッパーシフト). Power identity: more startup and a longer, punishable
+  // recovery, but a huge blow that launches high and knocks down hard. Whiff it and
+  // you eat a full combo - commitment matched to the payoff.
+  def.moves.dpunch = {
+    id: 'dpunch', name: 'ライジングトルク', startup: 7, active: 8, recovery: 32,
+    hitbox: { x: 2, y: 6, w: 34, h: 66 },
+    motion: '623', button: 'heavy', startupInvuln: 10,
+    hit: { damage: 130, hitstun: 24, blockstun: 18, hitstop: 12, pushbackHit: 4, pushbackBlock: 10, guard: 'mid', launch: 6.2, knockdown: true, kdFrames: 48 },
   };
   // Runs hot and manages it badly: its high gears heat faster than anyone's, so
   // riding GL5 overheats it quickly (a bigger, more punishable window - its

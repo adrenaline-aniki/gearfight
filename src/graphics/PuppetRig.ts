@@ -111,7 +111,12 @@ export class PuppetRig {
     A.legL = 0.44 * Math.sin(p + Math.PI);
     A.legRShin = 0.6 * Math.max(0, -Math.sin(p));           // flex knee on back-swing
     A.legLShin = 0.6 * Math.max(0, -Math.sin(p + Math.PI));
-    if (armSwing) { A.armR = -0.10 * Math.sin(p); A.armL = -0.13 * Math.sin(p + Math.PI); }
+    if (armSwing) {
+      A.armR = -0.10 * Math.sin(p);
+      // A blade character HOLDS its weapon arm steady - swinging it as a walk
+      // counterbalance made the blade "flap". Only the free (fist) arm swings.
+      if (!this.style.bladeArm) A.armL = -0.13 * Math.sin(p + Math.PI);
+    }
     return Math.abs(Math.sin(p)) * 4;
   }
 
@@ -145,7 +150,13 @@ export class PuppetRig {
         // during the brief active frames, not still ramping.
         const t = Math.min(1, f.phaseFrame / 3);
         const heavy = (f.move ?? '').includes('Heavy') || f.move === 'dpunch' || f.move === 'super';
-        if (f.move === 'dpunch') {                          // rising uppercut
+        if (f.move === 'dpunch') {                          // rising anti-air
+          if (this.style.bladeArm) {                        // Wizel: ライジングエッジ - blade whips up
+            A.armL = 2.3 * t;                               // back-arm blade sweeps skyward
+            A.armR = -0.3 * t; A.head = -0.08 * t; A.torso = -0.05 * t;
+            A.legR = -0.3 * t; A.legRShin = 0.6 * t;
+            return { angles: A, dy: -20 * t };
+          }
           A.armR = -2.1 * t; A.armRFore = 0.5 * t; A.legR = -0.3 * t; A.legRShin = 0.6 * t;
           return { angles: A, dy: -20 * t };
         }
@@ -176,7 +187,10 @@ export class PuppetRig {
         // into it so the lunge reads even at small scale.
         A.armR = (heavy ? -1.3 : -1.15) * t;
         A.armRFore = (heavy ? 1.35 : 1.15) * t;
-        A.armL = 0.28 * t; A.head = -0.06 * t; A.torso = 0.1 * t;
+        // Blade characters keep the weapon arm planted during a fist punch (no
+        // counter-swing = no "flapping" blade); everyone else swings it slightly.
+        A.armL = this.style.bladeArm ? 0 : 0.28 * t;
+        A.head = -0.06 * t; A.torso = 0.1 * t;
         return { angles: A, dx: (heavy ? 28 : 20) * t };
       }
       case 'hitstun': case 'blockstun': {
@@ -184,6 +198,17 @@ export class PuppetRig {
         A.head = -0.5; A.torso = -0.12; A.armR = 0.55; A.armRFore = -0.4;
         A.armL = 0.5; A.legR = -0.18; A.legRShin = 0.35;
         return { angles: A, dx: -14 };
+      }
+      case 'launched': {
+        // airborne tumble after a launching hit: back arched, limbs flailing, the
+        // whole body slowly spinning as it flies (the scene keeps it at its real
+        // airborne height, so it reads as knocked UP from where it was hit, then
+        // arcing down - distinct from the grounded knockdown lie below).
+        A.head = 0.4; A.torso = -0.25;
+        A.armR = 0.85; A.armRFore = -0.5; A.armL = 0.7;
+        A.legR = -0.35; A.legRShin = 0.5; A.legL = 0.35; A.legLShin = 0.5;
+        const spin = -Math.min(1.5, 0.35 + f.phaseFrame * 0.05);
+        return { angles: A, rot: spin, dx: -4 };
       }
       case 'knockdown': {
         // actually TIP OVER onto the back (whole body rotates ~80deg about the

@@ -14,6 +14,12 @@ import type { CombatFighter } from './CombatFighter';
 
 export type DummyMode = 'cpu' | 'guard' | 'stand';
 
+// The distance at which Wizel's light jab can ACTUALLY connect: its hitbox reaches
+// ~30px forward and the target's body adds ~9px, so ~38px is the real hit range.
+// The AI must be inside THIS to press - not merely "sort of close" - or it stands
+// at the edge whiffing jabs into the air (the reported bug).
+const WIZEL_JAB_REACH = 38;
+
 export class CombatAI {
   private attackCd = 0;
   private actionTimer = 0;
@@ -151,8 +157,10 @@ export class CombatAI {
     }
 
     // Out of range: close the gap fast (that's the whole speed-type identity),
-    // sometimes with the dashing blade rush from just outside poke range.
-    if (dist > 44) {
+    // sometimes with the dashing blade rush from just outside poke range. The gate
+    // is the REAL jab reach - so Wizel keeps walking in until it can actually hit,
+    // instead of parking just outside and mashing air.
+    if (dist > WIZEL_JAB_REACH) {
       if (dist < 90 && this.attackCd === 0 && Math.random() < 0.05) {
         self.requestSpecial('fireball');        // オーバーシフト・ラッシュ
         this.attackCd = 40;

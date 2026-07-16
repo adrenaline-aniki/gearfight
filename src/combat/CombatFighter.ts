@@ -35,7 +35,7 @@ export const COMBAT_GEARS: Record<number, GearSpec> = {
 export type FighterPhase =
   | 'idle' | 'walk' | 'crouch' | 'jumpsquat' | 'air'
   | 'attack' | 'airattack' | 'block' | 'crouchblock'
-  | 'hitstun' | 'blockstun' | 'knockdown' | 'dizzy';
+  | 'hitstun' | 'blockstun' | 'launched' | 'knockdown' | 'dizzy';
 
 /** A projectile the engine should spawn (returned from CombatFighter). */
 export interface ProjectileSpawn {
@@ -55,6 +55,14 @@ const JUMP_H_SPEED = 2.4;       // forward/back jump horizontal travel (px/frame
 const BACK_WALK_MUL = 0.85;     // backward walk is a touch slower than forward
 const DP_LEAP_VY = 5.8;         // アッパーシフト rise velocity (~40px up = real anti-air)
 const DP_LEAP_VX = 1.0;         // and a small forward drift into the opponent
+// Air-launch (launching hits, e.g. a DP): the victim flies FROM the point of
+// contact - keep their current height, pop them up, and carry them away
+// horizontally so they arc down and land into a knockdown a good distance off.
+// That makes an anti-air send them tumbling from up high (not from the floor), and
+// the horizontal separation + landing knockdown breaks the DP loop ("昇竜ハメ").
+const LAUNCH_CARRY = 1.7;        // horizontal drift per frame while launched (world px)
+const JUGGLE_CAP = 2;            // launching hits allowed before they just drop out
+const LAUNCH_JUGGLE_POP = 3.0;   // reduced re-pop when hit again mid-air (juggle scaling)
 
 // Dizzy / stun: hits add stun; cross the threshold in a short window and you get
 // dizzied (helpless for a bit = free combo). Stun decays in neutral, and a brief
@@ -158,6 +166,7 @@ export class CombatFighter {
 
   shiftLock = 0;     // >0 = locked from acting (post-shift vulnerability)
   invuln = 0;
+  juggleCount = 0;   // launching hits landed in the current airborne string (juggle cap)
   private jumpDir = 0; // facing-relative horizontal jump direction, captured at takeoff
 
   stun = 0;                    // dizzy meter; >= STUN_THRESHOLD -> dizzied
@@ -246,7 +255,8 @@ export class CombatFighter {
     // block the other way. Facing locks the instant an attack starts.
     const canTurn = this.phase !== 'attack' && this.phase !== 'airattack' &&
       this.phase !== 'jumpsquat' && this.phase !== 'hitstun' &&
-      this.phase !== 'blockstun' && this.phase !== 'knockdown' && this.phase !== 'dizzy';
+      this.phase !== 'blockstun' && this.phase !== 'launched' &&
+      this.phase !== 'knockdown' && this.phase !== 'dizzy';
     if (canTurn) this.facing = opponentX >= this.x ? 1 : -1;
 
     // Perfect Shift (double-clutch): a second gear tap inside the window that
@@ -321,6 +331,9 @@ export class CombatFighter {
       case 'hitstun':
       case 'blockstun':
         this.stepStun();
+        break;
+      case 'launched':
+        this.stepLaunched();
         break;
       case 'knockdown':
         this.stepKnockdown();
@@ -562,6 +575,23 @@ export class CombatFighter {
     }
   }
 
+  /** Airborne after a launching hit: drift horizontally while gravity (applyGravity)
+   * carries the arc. Can't act; landing converts this into a grounded knockdown. */
+  private stepLaunched() {
+    this.x += this.vx;
+    this.vx *= 0.98; // slight air drag so the carry eases out
+  }
+
+  /** Touchdown from a launch -> a short grounded knockdown (with the usual wakeup
+   * i-frames). The airtime already gave the attacker their okizeme window. */
+  private enterKnockdownFromLaunch() {
+    this.stunFrames = KNOCKDOWN_FRAMES;
+    this.phase = 'knockdown';
+    this.phaseFrame = 0;
+    this.pendingDizzy = false;
+    this.pendingReversal = null;
+  }
+
   private enterDizzy() {
     this.pendingDizzy = false;
     this.stun = 0;
@@ -679,6 +709,8 @@ export class CombatFighter {
         if (this.phase === 'air' || this.phase === 'airattack') {
           this.move = null;
           this.setPhase('idle');
+        } else if (this.phase === 'launched') {
+          this.enterKnockdownFromLaunch();
         }
       }
     }
@@ -866,9 +898,31 @@ export class CombatFighter {
     const stunAdd = hit.stun ?? Math.round(damage * 0.5);
     this.stun += this.dizzyImmune > 0 ? Math.round(stunAdd * 0.25) : stunAdd;
 
-    const hardKnockdown = this.health <= 0 || hit.knockdown || (hit.launch ?? 0) > 0;
+    // Launching hit (a DP): fly FROM the point of contact. Keep the current height
+    // (anti-air = tumble from up high; grounded = a small pop), pop upward, and
+    // drift away horizontally, arcing down into a knockdown on landing. Juggle-
+    // capped so it can't loop, and the horizontal carry + landing knockdown break
+    // the "昇竜ハメ" (repeat-DP) - they don't sit at a fixed spot anymore.
+    const launch = hit.launch ?? 0;
+    if (launch > 0 && this.health > 0) {
+      // A fresh launch (from the ground OR from a jump) pops fully from the current
+      // height; a RE-launch while already tumbling is diminished and juggle-capped.
+      const rejuggle = this.phase === 'launched';
+      this.juggleCount = rejuggle ? this.juggleCount + 1 : 1;
+      const capped = this.juggleCount > JUGGLE_CAP;
+      const pop = capped ? 0 : rejuggle ? Math.min(launch, LAUNCH_JUGGLE_POP) : launch;
+      if (pop > 0) this.vy = pop;             // fresh pop from wherever they were hit
+      else if (this.vy > 0) this.vy = 0;      // capped mid-rise -> kill the climb, drop them out
+      this.vx = attackerFacing * LAUNCH_CARRY;
+      this.phase = 'launched';
+      this.phaseFrame = 0;
+      this.pendingDizzy = false;
+      this.pendingReversal = null;
+      return { blocked: false, damage };
+    }
+
+    const hardKnockdown = this.health <= 0 || hit.knockdown;
     if (hardKnockdown) {
-      if (hit.launch) this.vy = hit.launch; // small pop for feel
       this.stunFrames = hit.kdFrames ?? KNOCKDOWN_FRAMES;
       this.phase = 'knockdown';
       this.phaseFrame = 0;

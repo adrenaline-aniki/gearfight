@@ -35,6 +35,12 @@ export class TrainingScene extends Phaser.Scene {
   private hudP1!: Phaser.GameObjects.Text;
   private hudP2!: Phaser.GameObjects.Text;
   private healthBarP1!: Phaser.GameObjects.Graphics;
+  // Gear coaching panel (P1): a lit 5-notch ladder + the current gear's concrete
+  // trade-off (damage x / speed x / guard-break) + a context line telling you WHEN
+  // to shift. Makes "why/when do I change gear" legible instead of invisible.
+  private gearPanelGfx!: Phaser.GameObjects.Graphics;
+  private gearLabelText!: Phaser.GameObjects.Text;
+  private gearCoachText!: Phaser.GameObjects.Text;
   private accumulator = 0;
 
   // keyboard
@@ -191,7 +197,14 @@ export class TrainingScene extends Phaser.Scene {
     // health bars (simple)
     this.healthBarP1 = this.add.graphics();
 
-    this.hudP1 = this.add.text(4, 26, '', { fontFamily: PIXEL_FONT, fontSize: '10px', color: '#8fd6ff' }).setResolution(2);
+    // Gear coaching panel sits just under P1's health/heat cluster (top-left).
+    this.gearPanelGfx = this.add.graphics();
+    this.gearLabelText = this.add.text(6, 39, '', { fontFamily: PIXEL_FONT, fontSize: '10px', color: '#cfe8ff' }).setResolution(2);
+    this.gearCoachText = this.add.text(6, 50, '', { fontFamily: PIXEL_FONT, fontSize: '10px', color: '#ffe37a' })
+      .setResolution(2).setWordWrapWidth(300, true);
+
+    // debug HUD (below the coaching panel so they don't overlap)
+    this.hudP1 = this.add.text(4, 62, '', { fontFamily: PIXEL_FONT, fontSize: '10px', color: '#8fd6ff' }).setResolution(2);
     this.hudP2 = this.add.text(GAME_WIDTH - 4, 26, '', { fontFamily: PIXEL_FONT, fontSize: '10px', color: '#ffb38f' })
       .setOrigin(1, 0).setResolution(2);
 
@@ -779,6 +792,7 @@ export class TrainingScene extends Phaser.Scene {
 
     this.drawHitFx();
     this.drawHealth();
+    this.drawGearPanel();
     this.hudP1.setText(this.describe(this.engine.p1));
     this.hudP2.setText(this.describe(this.engine.p2));
     this.drawMatchHud();
@@ -853,6 +867,7 @@ export class TrainingScene extends Phaser.Scene {
       case 'jumpsquat': case 'air': return 'jump';
       case 'block': return 'block';
       case 'hitstun': case 'blockstun': return 'hitstun';
+      case 'launched': return 'hitstun';
       case 'knockdown': return 'knockdown';
       case 'dizzy': return 'dizzy';
       default: return 'idle';
@@ -1080,6 +1095,42 @@ export class TrainingScene extends Phaser.Scene {
     };
     heat(6, 150, this.engine.p1, false);
     heat(GAME_WIDTH - 156, 150, this.engine.p2, true);
+  }
+
+  /** The gear coaching panel for P1: a lit 5-notch ladder coloured cool->hot, the
+   * current gear's concrete numbers, and a context line answering "when/why shift".
+   * This is the teaching layer for the gear system - the whole point of the game. */
+  private drawGearPanel() {
+    const f = this.engine.p1;
+    const g = this.gearPanelGfx;
+    g.clear();
+    const x0 = 6, y0 = 30, segW = 10, segH = 6, gap = 2;
+    const gearColor = (n: number) =>
+      n <= 1 ? 0x66ddaa : n === 2 ? 0x88dd66 : n === 3 ? 0xdddd66 : n === 4 ? 0xffaa44 : 0xff5533;
+    for (let n = 1; n <= 5; n++) {
+      const x = x0 + (n - 1) * (segW + gap);
+      const lit = n === f.gear && !f.overheated;
+      const col = f.overheated ? 0x884433 : gearColor(n);
+      g.fillStyle(col, lit ? 1 : 0.2); g.fillRect(x, y0, segW, segH);
+      g.lineStyle(1, col, lit ? 1 : 0.4); g.strokeRect(x, y0, segW, segH);
+    }
+
+    // current gear's trade-off, in plain numbers.
+    const spec = f.gearSpec;
+    const label = f.overheated
+      ? 'オーバーヒート！ ギア操作不能…冷めるのを待つ'
+      : `GL${f.gear}  攻撃×${spec.damageMul}  速度×${spec.walkMul}${spec.guardBreak ? '  ガード割り' : ''}`;
+    this.gearLabelText.setText(label);
+
+    // context-sensitive coaching: heat -> cool down; want to break guard -> gear up;
+    // low gear -> you're fast but light. Teaches the timing, not just the buttons.
+    let coach: string;
+    if (f.overheated) coach = 'クールダウン中。空くまで我慢';
+    else if (f.heat >= 72) coach = '発熱！ G- で下げて冷却';
+    else if (f.gear >= 4) coach = '高火力・ガード割り。畳みかけろ';
+    else if (f.gear <= 2) coach = '速いが軽い。崩すなら G+ で高ギア';
+    else coach = 'G+/G- で変速（変速中は無防備）';
+    this.gearCoachText.setText(coach);
   }
 
   private describe(f: CombatFighter): string {
