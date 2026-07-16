@@ -3,13 +3,26 @@ import { GAME_WIDTH, GAME_HEIGHT, GROUND_Y, PIXEL_FONT } from '../config/constan
 import { CombatEngine, projectileWorld } from '../combat/CombatEngine';
 import { CombatFighter } from '../combat/CombatFighter';
 import { EMPTY_COMMAND, type CommandInput } from '../combat/types';
-import { makeWizel, cloneCharacter, type CharacterDef } from '../combat/characterDef';
+import { cloneCharacter, type CharacterDef } from '../combat/characterDef';
 import { loadCharacter } from '../combat/characterStore';
+import { ROSTER, rosterEntry, rigIdForDef, rigStyleFor } from '../combat/roster';
 import { CombatAI, type DummyMode } from '../combat/CombatAI';
 import { PuppetRig, type RigData } from '../graphics/PuppetRig';
 
-// characters that have a puppet-rig; index 0 = P1, index 1 = P2 in this view.
-const RIG_CHARS = ['hajime', 'wizel'] as const;
+// rig-capable characters (have puppet-rig art); everyone else draws as the mech.
+const RIG_CHARS = ROSTER.filter((r) => r.rig).map((r) => r.rig as string);
+
+/** How a match/arcade/training session is set up. Passed to init(). */
+export interface MatchConfig {
+  mode: 'training' | 'versus' | 'arcade';
+  /** roster id for P1 (falls back to the saved/edited char in training). */
+  p1?: string;
+  /** roster id for P2 (versus / a fixed training dummy). */
+  p2?: string;
+  /** versus on the same keyboard (P2 human) instead of CPU. */
+  p2human?: boolean;
+  from?: string;
+}
 
 // GEAR FIGHT — combat rebuild (Phase 1), presentation layer.
 //
@@ -93,12 +106,13 @@ export class TrainingScene extends Phaser.Scene {
   // 判定 button or the B key for lab work.
   private showBoxes = false;
   private boxBtn?: Phaser.GameObjects.Text;
+  private titleText?: Phaser.GameObjects.Text;
 
   // match system: best-of-3 rounds, 60s timer, KO / time-over judgement.
   private p1def!: CharacterDef;
   private p2def!: CharacterDef;
   private matchOn = false;
-  private roundPhase: 'intro' | 'fight' | 'over' | 'matchover' = 'fight';
+  private roundPhase: 'intro' | 'fight' | 'over' | 'matchover' | 'matchend' = 'fight';
   private phaseTimer = 0;   // frames left in a non-fight phase
   private roundTimer = 0;   // frames left in the current round
   private fightFlash = 0;   // frames to keep showing "FIGHT!"
@@ -121,8 +135,17 @@ export class TrainingScene extends Phaser.Scene {
   // sprite-skin layer: one image per fighter slot. If a pose texture exists the
   // fighter is drawn as that sprite; otherwise we fall back to the gear-mech.
   private skinImgs: Phaser.GameObjects.Image[] = [];
-  // cut-out puppet rigs (one per fighter slot) for characters that have rig art
-  private rigs: (PuppetRig | undefined)[] = [];
+  // cut-out puppet rigs, keyed slot -> rigId, so the rig follows the CHARACTER a
+  // slot is currently rendering (supports character select + mirror matches).
+  private rigsBySlot: Record<number, Record<string, PuppetRig>> = { 0: {}, 1: {} };
+
+  // session config + game-flow state (character select -> versus/arcade -> result).
+  private cfg: MatchConfig = { mode: 'training' };
+  private arcadeQueue: string[] = [];   // roster ids to fight through (single-player)
+  private arcadeIndex = 0;
+  private menuBtns: Phaser.GameObjects.Text[] = [];  // post-match menu
+  private nameP1?: Phaser.GameObjects.Text;
+  private nameP2?: Phaser.GameObjects.Text;
 
   constructor() {
     super('TrainingScene');
@@ -162,19 +185,39 @@ export class TrainingScene extends Phaser.Scene {
     });
   }
 
-  init(data?: { def?: CharacterDef; from?: string }) {
+  init(data?: { config?: MatchConfig; def?: CharacterDef; from?: string }) {
     this.testDef = data?.def;
-    this.returnScene = data?.from ?? 'ModeSelectScene';
+    this.cfg = data?.config ?? { mode: 'training' };
+    this.returnScene = data?.from ?? this.cfg.from ?? 'ModeSelectScene';
+  }
+
+  /** Resolve the two character defs for the current config. Training keeps the
+   * old behaviour (edited/saved char, else Hajime, vs a Wizel dummy); versus and
+   * arcade build both sides from the roster selection. */
+  private resolveDefs(): { p1: CharacterDef; p2: CharacterDef } {
+    if (this.cfg.mode === 'training') {
+      const p1 = this.testDef ?? (this.hasSavedChar() ? loadCharacter() : rosterEntry('hajime').make());
+      const p2 = rosterEntry(this.cfg.p2 ?? 'wizel').make();
+      return { p1: cloneCharacter(p1), p2 };
+    }
+    return { p1: rosterEntry(this.cfg.p1 ?? 'hajime').make(), p2: rosterEntry(this.cfg.p2 ?? 'wizel').make() };
+  }
+
+  private hasSavedChar(): boolean {
+    try { return !!localStorage.getItem('gf_maker_working_char'); } catch { return false; }
   }
 
   create() {
     this.cameras.main.setBackgroundColor('#101820');
     // P1 is the character under test (passed from the editor, else the saved
     // working character); P2 is a default sparring dummy.
-    this.p1def = cloneCharacter(this.testDef ?? loadCharacter());
-    this.p2def = makeWizel(); // P2 = Wizel (speed type), matching its rig
+    const defs = this.resolveDefs();
+    this.p1def = defs.p1;
+    this.p2def = defs.p2;
     this.engine = new CombatEngine(cloneCharacter(this.p1def), cloneCharacter(this.p2def));
     this.accumulator = 0;
+    // versus = local 2P on the keyboard; arcade/training use the CPU.
+    this.p2Keyboard = this.cfg.mode === 'versus' && !!this.cfg.p2human;
 
     // ground line
     const ground = this.add.graphics();
@@ -191,11 +234,16 @@ export class TrainingScene extends Phaser.Scene {
     ];
     // Build a puppet rig per slot from that slot's character (created here so it
     // renders under the hitbox overlay). Falls back to the mech if art is absent.
-    this.rigs = RIG_CHARS.map((id) => {
-      const rd = this.cache.json.get(`${id}Rig`) as RigData | undefined;
-      if (!rd || !this.textures.exists(`rig_${id}_torso`)) return undefined;
-      return new PuppetRig(this, rd, `rig_${id}_`, 0, { bladeArm: id === 'wizel' });
-    });
+    // Build a rig instance for every (slot, rig-capable character) pair; drawFighter
+    // shows the one matching the character currently in that slot. Two instances per
+    // rig id (one per slot) let a mirror match render both sides.
+    for (const slot of [0, 1] as const) {
+      for (const rigId of RIG_CHARS) {
+        const rd = this.cache.json.get(`${rigId}Rig`) as RigData | undefined;
+        if (!rd || !this.textures.exists(`rig_${rigId}_torso`)) continue;
+        this.rigsBySlot[slot][rigId] = new PuppetRig(this, rd, `rig_${rigId}_`, 0, rigStyleFor(rigId));
+      }
+    }
     this.gfx = this.add.graphics();
 
     // health bars (simple)
@@ -212,7 +260,7 @@ export class TrainingScene extends Phaser.Scene {
     this.hudP2 = this.add.text(GAME_WIDTH - 4, 32, '', { fontFamily: PIXEL_FONT, fontSize: '10px', color: '#ffb38f' })
       .setOrigin(1, 0).setResolution(2);
 
-    this.add.text(GAME_WIDTH / 2, 4, 'TRAINING — 箱表示 v3', { fontFamily: PIXEL_FONT, fontSize: '10px', color: '#ffffff' })
+    this.titleText = this.add.text(GAME_WIDTH / 2, 4, 'TRAINING — 箱表示 v3', { fontFamily: PIXEL_FONT, fontSize: '10px', color: '#ffffff' })
       .setOrigin(0.5, 0).setResolution(2);
 
     // Dummy-mode toggle: CPU (fights back) -> ガード (blocks all) -> 棒立ち -> 2P.
@@ -266,10 +314,34 @@ export class TrainingScene extends Phaser.Scene {
     this.input.keyboard?.on('keydown-ESC', () => this.scene.start(this.returnScene));
     this.input.keyboard?.on('keydown-H', () => { this.showBoxes = !this.showBoxes; this.refreshBoxBtn(); });
 
-    // "← 戻る" button (touch): return to editor or mode select.
+    // "← 戻る" button (touch): return to editor / select / mode select.
     this.add.text(4, 4, '← 戻る', { fontFamily: PIXEL_FONT, fontSize: '10px', color: '#aabbcc' })
       .setResolution(2).setInteractive({ useHandCursor: true })
       .on('pointerdown', () => this.scene.start(this.returnScene));
+
+    // Character name plates over the health bars.
+    this.nameP1 = this.add.text(40, 4, '', { fontFamily: PIXEL_FONT, fontSize: '10px', color: '#bfe8ff' }).setResolution(2);
+    this.nameP2 = this.add.text(GAME_WIDTH - 40, 4, '', { fontFamily: PIXEL_FONT, fontSize: '10px', color: '#ffceb0' })
+      .setOrigin(1, 0).setResolution(2);
+
+    // Game flow: versus / arcade come in pre-configured and auto-start the match.
+    // The free-training dummy toggle only makes sense in the lab, so hide it there.
+    if (this.cfg.mode === 'arcade') {
+      this.arcadeQueue = ROSTER.map((r) => r.id).filter((id) => id !== (this.cfg.p1 ?? 'hajime'));
+      if (this.arcadeQueue.length === 0) this.arcadeQueue = [this.cfg.p1 ?? 'hajime']; // mirror if solo roster
+      this.arcadeIndex = 0;
+      this.cfg.p2 = this.arcadeQueue[0];
+      this.p2def = rosterEntry(this.cfg.p2).make();
+      this.hideLabChrome();
+      this.refreshNames();
+      this.startMatch();
+    } else if (this.cfg.mode === 'versus') {
+      this.hideLabChrome();
+      this.refreshNames();
+      this.startMatch();
+    } else {
+      this.refreshNames();
+    }
   }
 
   private setupKeyboard() {
@@ -398,6 +470,15 @@ export class TrainingScene extends Phaser.Scene {
 
   private refreshBoxBtn() {
     this.boxBtn?.setText(this.showBoxes ? '判定:表示' : '判定:非表示');
+  }
+
+  /** Hide the lab-only chrome (debug title, box toggle, dummy/match buttons) for
+   * the product-facing versus/arcade modes. The H key still toggles boxes. */
+  private hideLabChrome() {
+    this.titleText?.setVisible(false);
+    this.boxBtn?.setVisible(false);
+    this.dummyBtn?.setVisible(false);
+    this.matchBtn?.setVisible(false);
   }
 
   // ---- virtual analog stick (movement) ----------------------------------
@@ -616,6 +697,7 @@ export class TrainingScene extends Phaser.Scene {
   // ---- match manager -----------------------------------------------------
 
   private startMatch() {
+    this.clearMenu();
     this.matchOn = true;
     this.p1Wins = 0; this.p2Wins = 0; this.roundNum = 1;
     this.matchBtn?.setText('試合中止 ■');
@@ -623,7 +705,9 @@ export class TrainingScene extends Phaser.Scene {
   }
 
   private endMatch() {
+    this.clearMenu();
     this.matchOn = false;
+    this.roundPhase = 'fight';
     this.centerText?.setText('');
     this.timerText?.setText('');
     this.matchBtn?.setText('試合開始 ▶');
@@ -658,6 +742,8 @@ export class TrainingScene extends Phaser.Scene {
       else if (this.roundTimer <= 0) this.endRound('time');
       return;
     }
+    // matchend: fully frozen, the post-match menu drives what happens next.
+    if (this.roundPhase === 'matchend') return;
     // intro / over / matchover: frozen, just count down.
     if (--this.phaseTimer <= 0) this.advancePhase();
   }
@@ -689,10 +775,12 @@ export class TrainingScene extends Phaser.Scene {
     }
     if (this.roundPhase === 'over') {
       if (this.p1Wins >= 2 || this.p2Wins >= 2) {
-        const win = this.p1Wins > this.p2Wins ? 'YOU WIN!' : this.p2Wins > this.p1Wins ? 'YOU LOSE...' : 'DRAW GAME';
+        const won = this.p1Wins > this.p2Wins;
+        const cleared = this.cfg.mode === 'arcade' && won && this.arcadeIndex >= this.arcadeQueue.length - 1;
+        const win = cleared ? 'ARCADE CLEAR!' : won ? 'YOU WIN!' : this.p2Wins > this.p1Wins ? 'YOU LOSE...' : 'DRAW GAME';
         this.centerText?.setText(win);
         this.roundPhase = 'matchover';
-        this.phaseTimer = 200;
+        this.phaseTimer = 110;
         return;
       }
       this.roundNum++;
@@ -700,8 +788,66 @@ export class TrainingScene extends Phaser.Scene {
       return;
     }
     if (this.roundPhase === 'matchover') {
-      this.endMatch();
+      // Freeze on the result and hand off to the post-match menu (rematch / next
+      // opponent / back to select), instead of silently dropping to free-training.
+      this.roundPhase = 'matchend';
+      this.showPostMatchMenu();
     }
+  }
+
+  // ---- game flow: post-match menu + arcade ladder ------------------------
+
+  private showPostMatchMenu() {
+    this.clearMenu();
+    const won = this.p1Wins > this.p2Wins;
+    const opts: [string, () => void][] = [];
+    if (this.cfg.mode === 'arcade') {
+      if (won && this.arcadeIndex < this.arcadeQueue.length - 1) {
+        opts.push(['つぎの相手 ▶', () => this.nextArcadeOpponent()]);
+      } else if (won) {
+        opts.push(['もう一周 ▶', () => { this.arcadeIndex = -1; this.nextArcadeOpponent(); }]);
+      } else {
+        opts.push(['コンティニュー', () => { this.clearMenu(); this.startMatch(); }]);
+      }
+      opts.push(['キャラ選択へ', () => this.scene.start('SelectScene')]);
+    } else if (this.cfg.mode === 'versus') {
+      opts.push(['リマッチ', () => { this.clearMenu(); this.startMatch(); }]);
+      opts.push(['キャラ選択へ', () => this.scene.start('SelectScene')]);
+    } else {
+      opts.push(['リマッチ', () => { this.clearMenu(); this.startMatch(); }]);
+      opts.push(['もどる', () => this.scene.start(this.returnScene)]);
+    }
+    opts.forEach(([label, fn], i) => {
+      const btn = this.add.text(GAME_WIDTH / 2, 112 + i * 28, label, {
+        fontFamily: PIXEL_FONT, fontSize: '20px', color: '#fff', backgroundColor: '#2c6', padding: { x: 8, y: 3 },
+      }).setOrigin(0.5, 0).setResolution(2).setDepth(70).setInteractive({ useHandCursor: true });
+      btn.on('pointerover', () => btn.setScale(1.06));
+      btn.on('pointerout', () => btn.setScale(1));
+      btn.on('pointerdown', fn);
+      this.menuBtns.push(btn);
+    });
+  }
+
+  private clearMenu() {
+    for (const b of this.menuBtns) b.destroy();
+    this.menuBtns = [];
+  }
+
+  private nextArcadeOpponent() {
+    this.clearMenu();
+    this.arcadeIndex++;
+    if (this.arcadeIndex >= this.arcadeQueue.length) this.arcadeIndex = 0;
+    this.cfg.p2 = this.arcadeQueue[this.arcadeIndex];
+    this.p2def = rosterEntry(this.cfg.p2).make();
+    this.refreshNames();
+    this.startMatch();
+  }
+
+  private refreshNames() {
+    const n1 = this.cfg.mode === 'training' ? (this.p1def?.name ?? '1P') : rosterEntry(this.cfg.p1 ?? 'hajime').name;
+    const n2 = rosterEntry(this.cfg.p2 ?? 'wizel').name;
+    this.nameP1?.setText(n1);
+    this.nameP2?.setText(this.cfg.mode === 'arcade' ? `${n2}  (${this.arcadeIndex + 1}/${this.arcadeQueue.length})` : n2);
   }
 
   /** Capture just-pressed keys once per render frame (before sub-stepping). */
@@ -787,10 +933,9 @@ export class TrainingScene extends Phaser.Scene {
     g.clear();
     this.capsuleGfx.clear();
 
-    // P1 = Hajime, P2 = Wizel (RIG_CHARS). Falls back to the mech per fighter if
-    // that character's rig art didn't load.
-    this.drawFighter(this.engine.p1, 0x4488ff, 0, RIG_CHARS[0]);
-    this.drawFighter(this.engine.p2, 0xff8844, 1, RIG_CHARS[1]);
+    // Each side draws with its own character's rig (or the mech fallback).
+    this.drawFighter(this.engine.p1, 0x4488ff, 0);
+    this.drawFighter(this.engine.p2, 0xff8844, 1);
 
     // hitboxes on top (red), from whichever fighter is attacking — lab overlay only
     if (this.showBoxes) {
@@ -918,7 +1063,7 @@ export class TrainingScene extends Phaser.Scene {
     return true;
   }
 
-  private drawFighter(f: CombatFighter, capsuleColor: number, slot = 0, skinId = '') {
+  private drawFighter(f: CombatFighter, capsuleColor: number, slot = 0) {
     const push = f.getPushbox();
     const cx = (push.xmin + push.xmax) / 2;
     const fw = push.xmax - push.xmin;
@@ -926,22 +1071,26 @@ export class TrainingScene extends Phaser.Scene {
     const figH = push.ymax - push.ymin;
     const dir = f.facing;
 
-    // Puppet rig takes precedence (animated cut-out from the idle drawing).
-    // Each slot's rig is already the right character (see RIG_CHARS).
-    if (skinId && this.rigs[slot]) {
+    // Puppet rig takes precedence, resolved by the CHARACTER in this slot (not a
+    // fixed per-slot assignment) so character select / arcade / mirror matches
+    // render the right art. Hide every other rig in the slot to avoid ghosts.
+    const rigId = rigIdForDef(f.def);
+    const slotRigs = this.rigsBySlot[slot] ?? {};
+    for (const k in slotRigs) if (k !== rigId) slotRigs[k].setVisible(false);
+    const rig = rigId ? slotRigs[rigId] : undefined;
+    if (rig) {
       this.skinImgs[slot]?.setVisible(false);
       // Use a CONSTANT display height (standing size). figH shrinks when crouching
       // (shorter pushbox) - scaling by it made the character shrink; the crouch is
       // a POSE, not a smaller character.
-      this.rigs[slot]!.sync(f, cx, feetY, 54, f.facing);
+      rig.sync(f, cx, feetY, 54, f.facing);
       if (f.phase === 'dizzy') this.drawDizzyStars(cx, feetY - 60);
       this.drawBoxes(f, push);
       return;
     }
-    this.rigs[slot]?.setVisible(false);
 
-    // Otherwise a static sprite skin; if it drew, we're done (still show boxes).
-    if (skinId && this.drawSkin(f, slot, skinId, cx, feetY, figH)) {
+    // Otherwise a static sprite skin by character id; if it drew, we're done.
+    if (this.drawSkin(f, slot, f.def.id, cx, feetY, figH)) {
       this.drawBoxes(f, push);
       return;
     }

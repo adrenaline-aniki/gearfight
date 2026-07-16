@@ -9,6 +9,7 @@ import { DialogueScene } from './scenes/DialogueScene';
 import { GarageScene } from './scenes/GarageScene';
 import { BattleScene } from './scenes/BattleScene';
 import { TrainingScene } from './scenes/TrainingScene';
+import { SelectScene } from './scenes/SelectScene';
 import { EditorScene } from './scenes/EditorScene';
 
 // A plain CSS `url(/fonts/...)` can't pick up Vite's `base` (needed so the
@@ -45,7 +46,7 @@ const config: Phaser.Types.Core.GameConfig = {
     width: GAME_WIDTH,
     height: GAME_HEIGHT,
   },
-  scene: [BootScene, TitleScene, ModeSelectScene, DialogueScene, GarageScene, BattleScene, TrainingScene, EditorScene],
+  scene: [BootScene, TitleScene, ModeSelectScene, DialogueScene, GarageScene, BattleScene, TrainingScene, SelectScene, EditorScene],
   physics: {
     default: 'arcade',
     arcade: { gravity: { x: 0, y: 0 }, debug: false },
