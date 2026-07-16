@@ -482,13 +482,9 @@ export class CombatFighter {
     const rec = this.scaledRecovery(m.recovery);
     const total = su + m.active + rec;
 
-    // アッパーシフト (dpunch): a real rising anti-air. Leap up+forward on the first
-    // frame so the fighter (and its tall hitbox) climbs into a jumping opponent;
-    // gravity brings it back down into the recovery. Feet re-plant on landing.
-    if (this.move === 'dpunch') {
-      if (this.phaseFrame === 0) { this.vy = DP_LEAP_VY; this.vx = this.facing * DP_LEAP_VX; }
-      this.x += this.vx;
-    }
+    // アッパーシフト (dpunch): carry the leap's forward drift (the up/forward
+    // velocity is set in startMove; gravity handles the vertical arc).
+    if (this.move === 'dpunch') this.x += this.vx;
 
     // Cancel: once this move has connected (hit or block), its recovery can be
     // cancelled into an allowed target (normal xx normal, normal xx special xx
@@ -606,6 +602,10 @@ export class CombatFighter {
     this.moveHasSpawnedProjectile = false;
     this.vx = 0;
     this.enterPhase('attack');
+    // アッパーシフト leaps up+forward the instant it starts (applyGravity this same
+    // frame carries it up). Set here, not in stepAttack, because a move started
+    // from neutral doesn't get its first stepAttack until the NEXT frame.
+    if (id === 'dpunch') { this.vy = DP_LEAP_VY; this.vx = this.facing * DP_LEAP_VX; }
   }
 
   /** Air normal: keeps the jump arc (does NOT reset vx/vy). */
