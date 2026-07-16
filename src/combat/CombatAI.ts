@@ -19,8 +19,10 @@ export class CombatAI {
   private actionTimer = 0;
   private wantJump = false;
   private reversaling = false;
+  private comboStep = 0;   // Wizel: hits landed in the current rush string
+  private pauseTimer = 0;  // Wizel: the guaranteed opening after a 3-hit string
 
-  reset() { this.attackCd = 0; this.actionTimer = 0; this.wantJump = false; this.reversaling = false; }
+  reset() { this.attackCd = 0; this.actionTimer = 0; this.wantJump = false; this.reversaling = false; this.comboStep = 0; this.pauseTimer = 0; }
 
   update(self: CombatFighter, opp: CombatFighter, mode: DummyMode): CommandInput {
     if (this.attackCd > 0) this.attackCd--;
@@ -42,6 +44,9 @@ export class CombatAI {
 
     if (mode === 'stand') return EMPTY_COMMAND;
     if (mode === 'guard') return this.guard(self, opp);
+    // Per-character personality: ウィズル rushes with GL1-2 light strings and a
+    // readable opening; everyone else uses the neutral all-rounder brain.
+    if (self.def.id === 'wizel') return this.wizelCpu(self, opp);
     return this.cpu(self, opp);
   }
 
@@ -110,6 +115,63 @@ export class CombatAI {
     }
     // between pokes, occasionally hold back to bait / block
     if (Math.random() < 0.3) c.fwd = -1;
+    return c;
+  }
+
+  // ウィズル — SPEED type, per 仕様書 §4.2: stays in GL1-2 and pressures with fast
+  // light strings, but ALWAYS opens up for ~14 frames after a 3-hit string. That
+  // guaranteed gap is the lesson: a low gear is fast but its rush has a fixed
+  // recovery you can learn to punish. Deliberately not a wall - it teaches tempo.
+  private wizelCpu(self: CombatFighter, opp: CombatFighter): CommandInput {
+    const c: CommandInput = { ...EMPTY_COMMAND };
+    const dist = Math.abs(opp.x - self.x);
+    const oppAttacking = opp.phase === 'attack' || opp.phase === 'airattack';
+
+    // The guaranteed opening: after a 3-hit string just stand there, wide open,
+    // so the player can find the punish. This IS the teaching moment - checked
+    // FIRST so nothing (not even a down-shift) covers the gap.
+    if (this.pauseTimer > 0) { this.pauseTimer--; return c; }
+
+    // Speed mech: hold the low gears. If we ever end up above GL2, drop back.
+    if (self.gear > 2 && self.shiftLock === 0) { c.gearDown = true; return c; }
+
+    // Anti-air: still swat obvious jump-ins (a rushdown character isn't helpless).
+    if (!opp.isGrounded() && dist < 52 && self.isGrounded() && this.attackCd === 0 && Math.random() < 0.2) {
+      self.requestSpecial('dpunch');
+      this.attackCd = 40;
+      return c;
+    }
+    // Occasionally respect a committed poke instead of trading into it.
+    if (oppAttacking && dist < 52 && Math.random() < 0.35) {
+      c.fwd = -1;
+      const g = opp.move ? opp.def.moves[opp.move]?.hit.guard : undefined;
+      if (g === 'low') c.vert = -1;
+      return c;
+    }
+
+    // Out of range: close the gap fast (that's the whole speed-type identity),
+    // sometimes with the dashing blade rush from just outside poke range.
+    if (dist > 44) {
+      if (dist < 90 && this.attackCd === 0 && Math.random() < 0.05) {
+        self.requestSpecial('fireball');        // オーバーシフト・ラッシュ
+        this.attackCd = 40;
+        this.comboStep = 0;
+        return c;
+      }
+      c.fwd = 1;
+      return c;
+    }
+
+    // In range: hammer light. Three quick jabs, then the mandatory opening -
+    // pauseTimer alone governs the gap (it's checked at the top and blocks every
+    // action), so it reads as a full ~20-frame "stand still and get punished".
+    if (this.attackCd === 0) {
+      c.light = true;
+      this.attackCd = 11;                        // tight rhythm between jabs
+      this.comboStep++;
+      if (this.comboStep >= 3) { this.comboStep = 0; this.attackCd = 0; this.pauseTimer = 20; }
+      return c;
+    }
     return c;
   }
 }
