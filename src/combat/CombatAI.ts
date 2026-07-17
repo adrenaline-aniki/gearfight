@@ -20,6 +20,35 @@ export type DummyMode = 'cpu' | 'guard' | 'stand';
 // at the edge whiffing jabs into the air (the reported bug).
 const WIZEL_JAB_REACH = 38;
 
+// Style-based personalities for the roster's non-bespoke fighters. A `turtle`
+// holds ground and blocks then punishes with its special; a `zone` keeps its
+// preferred distance and lobs projectiles, retreating when crowded; a `trick`
+// plays mid-range hit-and-run and lays traps; a `rush` takes the initiative and
+// closes in. The pros tune the numbers; the shapes give each fighter a game plan.
+type AIStyle = 'turtle' | 'zone' | 'trick' | 'rush';
+interface AIProfile {
+  style: AIStyle;
+  attackRange: number; // the distance its pokes actually connect at
+  space: number;       // the distance it wants to sit at (zoners far, rushers close)
+  gearTarget: number;  // the gear it drifts toward
+  block: number;       // chance to block a committed poke up close
+  antiAir: number;     // chance to DP an incoming jump-in
+  zone: number;        // chance to throw its fireball-slot special from range
+  usesSuper: boolean;
+}
+const AI_PROFILES: Record<string, AIProfile> = {
+  // アイギス: a wall. Blocks a lot, holds its ground, and punishes with シールドタックル.
+  aegis: { style: 'turtle', attackRange: 46, space: 40, gearTarget: 3, block: 0.62, antiAir: 0.15, zone: 0.28, usesSuper: true },
+  // ドリフト: mid-range hit-and-run; lays オイルトラップ then darts around it.
+  drift: { style: 'trick', attackRange: 40, space: 68, gearTarget: 2, block: 0.35, antiAir: 0.18, zone: 0.5, usesSuper: true },
+  // テオリオン: keep-away zoner; sits far and throws 三日月ウェーブ, retreats when crowded.
+  theorion: { style: 'zone', attackRange: 42, space: 100, gearTarget: 3, block: 0.4, antiAir: 0.3, zone: 0.7, usesSuper: true },
+  // オメガノヴァ: the boss - takes the initiative, closes in, mixes in ダークネビュラ.
+  omeganova: { style: 'rush', attackRange: 46, space: 46, gearTarget: 4, block: 0.42, antiAir: 0.28, zone: 0.3, usesSuper: true },
+  // ソフィス・レギオン: technical zoner - フロストランス pressure, then approaches.
+  sophislegion: { style: 'zone', attackRange: 44, space: 84, gearTarget: 3, block: 0.46, antiAir: 0.26, zone: 0.55, usesSuper: true },
+};
+
 export class CombatAI {
   private attackCd = 0;
   private actionTimer = 0;
@@ -27,8 +56,9 @@ export class CombatAI {
   private reversaling = false;
   private comboStep = 0;   // Wizel: hits landed in the current rush string
   private pauseTimer = 0;  // Wizel: the guaranteed opening after a 3-hit string
+  private retreatTimer = 0; // trickster: frames to back off after a hit-and-run poke
 
-  reset() { this.attackCd = 0; this.actionTimer = 0; this.wantJump = false; this.reversaling = false; this.comboStep = 0; this.pauseTimer = 0; }
+  reset() { this.attackCd = 0; this.actionTimer = 0; this.wantJump = false; this.reversaling = false; this.comboStep = 0; this.pauseTimer = 0; this.retreatTimer = 0; }
 
   update(self: CombatFighter, opp: CombatFighter, mode: DummyMode): CommandInput {
     if (this.attackCd > 0) this.attackCd--;
@@ -50,10 +80,13 @@ export class CombatAI {
 
     if (mode === 'stand') return EMPTY_COMMAND;
     if (mode === 'guard') return this.guard(self, opp);
-    // Per-character personality: ウィズル rushes with GL1-2 light strings and a
-    // readable opening; everyone else uses the neutral all-rounder brain.
+    // Per-character personality. ウィズル and ガンロック have bespoke brains (a low-gear
+    // rush and a high-gear overheater); the rest are driven by a shared style-based
+    // brain so a turtle turtles, a zoner zones, a trickster hits and runs, etc.
     if (self.def.id === 'wizel') return this.wizelCpu(self, opp);
     if (self.def.id === 'ganrock') return this.ganrockCpu(self, opp);
+    const prof = AI_PROFILES[self.def.id];
+    if (prof) return this.profiledCpu(self, opp, prof);
     return this.cpu(self, opp);
   }
 
@@ -263,5 +296,108 @@ export class CombatAI {
       return c;
     }
     return c;
+  }
+
+  // Shared style-based brain for the roster's non-bespoke fighters (see AI_PROFILES).
+  // Movement is decided every frame from distance (no jitter), and each style has a
+  // distinct game plan: turtle / zone / trick / rush.
+  private profiledCpu(self: CombatFighter, opp: CombatFighter, p: AIProfile): CommandInput {
+    const c: CommandInput = { ...EMPTY_COMMAND };
+    const dist = Math.abs(opp.x - self.x);
+    const oppAtt = opp.phase === 'attack' || opp.phase === 'airattack';
+    if (this.retreatTimer > 0) this.retreatTimer--;
+
+    // Gear management: cool down when hot, else drift toward the profile's gear.
+    if (self.shiftLock === 0 && !self.overheated && dist > 36 && this.attackCd === 0) {
+      if (self.heat > 75 && self.gear > 1) { c.gearDown = true; return c; }
+      if (self.gear < p.gearTarget && Math.random() < 0.15) { c.gearUp = true; return c; }
+      if (self.gear > p.gearTarget && Math.random() < 0.15) { c.gearDown = true; return c; }
+    }
+    // Anti-air an incoming jump-in.
+    if (!opp.isGrounded() && dist < 54 && self.isGrounded() && this.attackCd === 0 && Math.random() < p.antiAir) {
+      self.requestSpecial('dpunch'); this.attackCd = 42; return c;
+    }
+    // Block a committed poke up close (low-block a low).
+    if (oppAtt && dist < 58 && Math.random() < p.block) {
+      c.fwd = -1;
+      const g = opp.move ? opp.def.moves[opp.move]?.hit.guard : undefined;
+      if (g === 'low') c.vert = -1;
+      return c;
+    }
+    // Cash in a full meter when in range.
+    if (p.usesSuper && self.meter >= 100 && dist <= Math.max(52, p.attackRange + 6) && this.attackCd === 0 && Math.random() < 0.5) {
+      self.requestSpecial('super'); this.attackCd = 44; return c;
+    }
+
+    const inRange = dist <= p.attackRange;
+    switch (p.style) {
+      case 'zone': {
+        // A zoner keeps distance and lobs projectiles - BUT it must not run into the
+        // wall forever (that stalls the match). When cornered it commits: fight its
+        // way out / switch sides, so a keep-away game always resolves.
+        const cornered = (self.facing === 1 && self.x < 55) || (self.facing === -1 && self.x > 329);
+        if (dist < p.space - 10 && !cornered) {
+          if (inRange && this.attackCd === 0 && Math.random() < 0.35) { c.light = true; this.attackCd = 16; return c; }
+          c.fwd = -1; return c;
+        }
+        if (this.attackCd === 0 && Math.random() < p.zone) { self.requestSpecial('fireball'); this.attackCd = 50; return c; }
+        if (cornered) {
+          // no room to run: poke if we can, else walk toward the opponent to escape.
+          if (inRange && this.attackCd === 0 && Math.random() < 0.5) { c.light = true; this.attackCd = 16; return c; }
+          c.fwd = 1; return c;
+        }
+        if (dist > p.space + 20) c.fwd = 1; // too far even to zone comfortably
+        return c;
+      }
+      case 'trick': {
+        // lay a trap from mid range, poke, then hit-and-run away.
+        if (this.retreatTimer > 0) { c.fwd = -1; return c; }
+        if (dist >= p.attackRange && dist <= p.space && this.attackCd === 0 && Math.random() < p.zone * 0.5) {
+          self.requestSpecial('fireball'); this.attackCd = 55; return c; // オイルトラップ
+        }
+        if (!inRange) { c.fwd = 1; return c; }
+        if (this.attackCd === 0) {
+          const r = Math.random();
+          if (r < 0.4) { c.vert = -1; c.light = true; } else if (r < 0.85) { c.light = true; } else { c.heavy = true; }
+          this.attackCd = 14 + Math.floor(Math.random() * 8);
+          this.retreatTimer = 10 + Math.floor(Math.random() * 10);
+          return c;
+        }
+        return c;
+      }
+      case 'turtle': {
+        // hold ground, creep in, block-bait, punish with sturdy heavies / the special.
+        if (!inRange) {
+          if (dist < p.attackRange + 22 && this.attackCd === 0 && Math.random() < p.zone) { self.requestSpecial('fireball'); this.attackCd = 50; return c; }
+          c.fwd = Math.random() < 0.7 ? 1 : -1;
+          return c;
+        }
+        if (this.attackCd === 0 && Math.random() < 0.7) {
+          const r = Math.random();
+          if (r < 0.55) { c.heavy = true; this.attackCd = 22; }
+          else if (r < 0.85) { c.light = true; this.attackCd = 16; }
+          else { self.requestSpecial('fireball'); this.attackCd = 48; }
+          return c;
+        }
+        if (Math.random() < 0.4) c.fwd = -1;
+        return c;
+      }
+      case 'rush':
+      default: {
+        // take the initiative; occasionally zone en route; throw on a cornered guard.
+        if (!inRange) {
+          if (dist < p.space + 40 && this.attackCd === 0 && Math.random() < p.zone * 0.25) { self.requestSpecial('fireball'); this.attackCd = 55; return c; }
+          c.fwd = 1; return c;
+        }
+        if (dist < 26 && this.attackCd === 0 && Math.random() < 0.2) { c.throw = true; this.attackCd = 22; return c; }
+        if (this.attackCd === 0 && Math.random() < 0.85) {
+          const r = Math.random();
+          if (r < 0.3) { c.vert = -1; c.light = true; } else if (r < 0.7) { c.light = true; } else { c.heavy = true; }
+          this.attackCd = 14 + Math.floor(Math.random() * 10);
+          return c;
+        }
+        return c;
+      }
+    }
   }
 }

@@ -276,13 +276,13 @@ export function makeTheorion(): CharacterDef {
 // strong (it's the wall at the top of the ladder); the pros will tune it down.
 export function makeOmeganova(): CharacterDef {
   const def = makeDefaultCharacter('omeganova', 'オメガノヴァ');
-  def.health = 1200;
+  def.health = 1130;   // still the sturdiest non-tank, but trimmed from a runaway 1200
   def.walkSpeed = 1.35;
   def.jumpVy = 6.0;
   setBuild(def, 60, 23, 26); // a boss with presence - a shade bigger, not towering (a human pilots it)
-  def.moves.standLight.hit.damage = 34;
-  def.moves.standHeavy.hit.damage = 100;
-  def.moves.crouchHeavy.hit.damage = 72;
+  def.moves.standLight.hit.damage = 33;
+  def.moves.standHeavy.hit.damage = 90;   // strong but no longer an instant-melt heavy
+  def.moves.crouchHeavy.hit.damage = 70;
   // fireball -> ダークネビュラ: a big, slow, heavy-hitting orb (boss zoning).
   def.moves.fireball = {
     id: 'fireball', name: 'ダークネビュラ', startup: 14, active: 2, recovery: 30,
