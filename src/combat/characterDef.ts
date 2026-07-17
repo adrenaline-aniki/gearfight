@@ -34,6 +34,25 @@ export interface CharacterDef {
   gears: Record<number, GearSpec>;
   /** the move table, keyed by move id (light/heavy/crouchLight/... plus any the author adds). */
   moves: Record<string, MoveData>;
+  /** on-screen sprite height in px (the renderer scales the rig to this). Lets a
+   * heavyweight read bigger than a speedster. Defaults to ~54 if unset. */
+  displayHeight?: number;
+}
+
+// Give a character a BUILD: its on-screen size and matching hurt/push boxes, so a
+// heavyweight is visibly big AND has a wide box (the hitbox matches the sprite),
+// while a nimble type is smaller. hurtbox height tracks the display height so the
+// box always sits ~a head below the top of the sprite.
+export function setBuild(def: CharacterDef, display: number, hurtW: number, pushW: number) {
+  const h = Math.round(display - 8);
+  const ch = Math.round(h * 0.63);
+  const hx = -Math.round(hurtW / 2);
+  const px = -Math.round(pushW / 2);
+  def.displayHeight = display;
+  def.standHurtbox = { x: hx, y: 0, w: hurtW, h };
+  def.crouchHurtbox = { x: hx, y: 0, w: hurtW, h: ch };
+  def.pushbox = { x: px, y: 0, w: pushW, h };
+  def.crouchPushbox = { x: px, y: 0, w: pushW, h: ch };
 }
 
 // A deep clone so callers can freely mutate a def (the editor does) without
@@ -57,6 +76,7 @@ export function makeDefaultCharacter(id = 'proto', name = 'プロト'): Characte
     crouchPushbox: { ...PUSHBOX_CROUCH },
     gears: cloneGears(COMBAT_GEARS),
     moves: JSON.parse(JSON.stringify(MOVES)) as Record<string, MoveData>,
+    displayHeight: 54,
   };
 }
 
@@ -75,6 +95,7 @@ export function makeWizel(): CharacterDef {
   def.health = 900;
   def.walkSpeed = 2.0;
   def.jumpVy = 6.6;
+  setBuild(def, 53, 17, 19); // light, quick - a touch smaller than the norm
   // lighter strikes (speed trades power for tempo)
   def.moves.standLight.hit.damage = 26;
   def.moves.standHeavy.hit.damage = 66;
@@ -115,6 +136,7 @@ export function makeGanrock(): CharacterDef {
   def.health = 1150;
   def.walkSpeed = 1.2;
   def.jumpVy = 5.9;
+  setBuild(def, 61, 25, 28); // heavyweight: big and WIDE (its bulk now reads + the box matches)
   // Heavier, slower normals: the jab is a beat slower, the heavy is a wrecking
   // ball with real reach.
   def.moves.standLight = {
@@ -179,6 +201,7 @@ export function makeAegis(): CharacterDef {
   def.health = 1250;
   def.walkSpeed = 1.1;
   def.jumpVy = 5.7;
+  setBuild(def, 61, 25, 30); // tank: big, and the widest pushbox (a wall to move)
   def.moves.standLight.hit.damage = 32;
   def.moves.standHeavy.hit.damage = 90;
   def.moves.standHeavy.hit.blockstun = 18; // safer heavy on block (a defender's poke)
@@ -203,6 +226,7 @@ export function makeDrift(): CharacterDef {
   def.health = 860;
   def.walkSpeed = 2.2;
   def.jumpVy = 6.8;
+  setBuild(def, 52, 17, 19); // the smallest, nimblest frame
   // claws: a touch more reach than the norm, light and quick
   def.moves.standLight.hit.damage = 26;
   def.moves.standLight.hitbox = { x: 8, y: 22, w: 26, h: 12 };
@@ -232,6 +256,7 @@ export function makeTheorion(): CharacterDef {
   def.health = 1000;
   def.walkSpeed = 1.6;
   def.jumpVy = 6.3;
+  setBuild(def, 55, 18, 20); // lean, slightly tall knight
   def.moves.standHeavy.hitbox = { x: 8, y: 20, w: 34, h: 18 }; // blade reach
   // fireball -> 三日月ウェーブ: a fast, thin crescent projectile (zoner's tool).
   def.moves.fireball = {
@@ -254,6 +279,7 @@ export function makeOmeganova(): CharacterDef {
   def.health = 1200;
   def.walkSpeed = 1.35;
   def.jumpVy = 6.0;
+  setBuild(def, 60, 23, 26); // a boss with presence - a shade bigger, not towering (a human pilots it)
   def.moves.standLight.hit.damage = 34;
   def.moves.standHeavy.hit.damage = 100;
   def.moves.crouchHeavy.hit.damage = 72;
@@ -278,6 +304,7 @@ export function makeSophislegion(): CharacterDef {
   def.health = 1150;
   def.walkSpeed = 1.45;
   def.jumpVy = 6.2;
+  setBuild(def, 60, 23, 26); // hidden boss - same imposing-but-human scale as オメガノヴァ
   def.moves.standHeavy.hit.damage = 84;
   // fireball -> フロストランス: a medium ice projectile with heavy blockstun (freeze).
   def.moves.fireball = {

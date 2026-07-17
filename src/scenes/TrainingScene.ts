@@ -1053,7 +1053,7 @@ export class TrainingScene extends Phaser.Scene {
     const key = this.textures.exists(exact) ? exact : this.textures.exists(idle) ? idle : null;
     if (!key) { img.setVisible(false); return false; }
     const src = this.textures.get(key).getSourceImage() as { height: number };
-    const targetH = figH * 1.2; // sprites read a touch taller than the hurtbox
+    const targetH = f.def.displayHeight ?? figH * 1.2; // per-character size (taller than the hurtbox)
     img.setTexture(key);
     img.setOrigin(0.5, 1);              // feet-anchored
     img.setScale(src.height ? targetH / src.height : 1);
@@ -1080,10 +1080,10 @@ export class TrainingScene extends Phaser.Scene {
     const rig = rigId ? slotRigs[rigId] : undefined;
     if (rig) {
       this.skinImgs[slot]?.setVisible(false);
-      // Use a CONSTANT display height (standing size). figH shrinks when crouching
-      // (shorter pushbox) - scaling by it made the character shrink; the crouch is
-      // a POSE, not a smaller character.
-      rig.sync(f, cx, feetY, 54, f.facing);
+      // Per-character display height (a heavyweight reads bigger than a speedster).
+      // Uses the def's standing size, NOT figH - figH shrinks when crouching, which
+      // would wrongly shrink the character; the crouch is a POSE, not a smaller body.
+      rig.sync(f, cx, feetY, f.def.displayHeight ?? 54, f.facing);
       if (f.phase === 'dizzy') this.drawDizzyStars(cx, feetY - 60);
       this.drawBoxes(f, push);
       return;
