@@ -170,3 +170,124 @@ export function makeGanrock(): CharacterDef {
   def.gears[5].heatPerSec = 42;
   return def;
 }
+
+// アイギス — DEFENSE type (カメイ's mech): a walking wall. Highest health, slowest
+// feet, sturdy normals, and a shield tackle that plows forward and knocks down.
+// Plays the long game: block, soak, and punish with heavy, safe pokes.
+export function makeAegis(): CharacterDef {
+  const def = makeDefaultCharacter('aegis', 'アイギス');
+  def.health = 1250;
+  def.walkSpeed = 1.1;
+  def.jumpVy = 5.7;
+  def.moves.standLight.hit.damage = 32;
+  def.moves.standHeavy.hit.damage = 90;
+  def.moves.standHeavy.hit.blockstun = 18; // safer heavy on block (a defender's poke)
+  // fireball slot -> シールドタックル: an advancing shield bash, guard-chipping and
+  // knocking down. The defender's way IN (it doesn't zone; it walls up and rams).
+  def.moves.fireball = {
+    id: 'fireball', name: 'シールドタックル', startup: 14, active: 6, recovery: 24,
+    hitbox: { x: 6, y: 14, w: 40, h: 34 }, motion: '236', button: 'heavy', advance: 2.2,
+    hit: { damage: 70, hitstun: 20, blockstun: 18, hitstop: 11, pushbackHit: 6, pushbackBlock: 6, guard: 'mid', chip: 0.2, knockdown: true },
+  };
+  return def;
+}
+
+// ドリフト — SPEED / TRICKSTER type (リン's mech): the mirror of Wizel. Where Wizel
+// glues itself to your face, Drift is a hit-and-run mixup fighter built on movement
+// and SPACE CONTROL. Fastest feet, lightest health, twin-claw pokes with a little
+// more reach, and its signature: オイルトラップ, a floor hazard that trips whoever
+// steps on it (Drift is immune - the old "unaffected by terrain" identity). Set a
+// trap, zip around, and punish when they slip.
+export function makeDrift(): CharacterDef {
+  const def = makeDefaultCharacter('drift', 'ドリフト');
+  def.health = 860;
+  def.walkSpeed = 2.2;
+  def.jumpVy = 6.8;
+  // claws: a touch more reach than the norm, light and quick
+  def.moves.standLight.hit.damage = 26;
+  def.moves.standLight.hitbox = { x: 8, y: 22, w: 26, h: 12 };
+  def.moves.standHeavy.hit.damage = 64;
+  def.moves.standHeavy.hitbox = { x: 8, y: 20, w: 34, h: 18 };
+  // fireball slot -> オイルトラップ: place a slick on the ground just ahead. It sits
+  // there (a zero-speed projectile) and TRIPS a grounded opponent who walks over it
+  // (a low - crouch-blockable, jumpable). Only the opponent can trigger it, so Drift
+  // walks over its own trap freely. Pure space control / okizeme, not damage.
+  def.moves.fireball = {
+    id: 'fireball', name: 'オイルトラップ', startup: 14, active: 2, recovery: 22,
+    hitbox: { x: 0, y: 0, w: 0, h: 0 }, motion: '236', button: 'light',
+    projectile: {
+      speed: 0, box: { x: 22, y: 0, w: 34, h: 12 }, life: 200,
+      hit: { damage: 28, hitstun: 16, blockstun: 12, hitstop: 8, pushbackHit: 2, pushbackBlock: 2, guard: 'low', knockdown: true, kdFrames: 34 },
+    },
+    hit: { damage: 0, hitstun: 0, blockstun: 0, hitstop: 0, pushbackHit: 0, pushbackBlock: 0 },
+  };
+  return def;
+}
+
+// テオリオン — TECHNICAL zoner (カイ's mech): a poised blade-knight who controls
+// space with a fast crescent projectile and long, clean pokes. Balanced stats,
+// slightly better reach; wants to play keep-away and whiff-punish.
+export function makeTheorion(): CharacterDef {
+  const def = makeDefaultCharacter('theorion', 'テオリオン');
+  def.health = 1000;
+  def.walkSpeed = 1.6;
+  def.jumpVy = 6.3;
+  def.moves.standHeavy.hitbox = { x: 8, y: 20, w: 34, h: 18 }; // blade reach
+  // fireball -> 三日月ウェーブ: a fast, thin crescent projectile (zoner's tool).
+  def.moves.fireball = {
+    id: 'fireball', name: '三日月ウェーブ', startup: 12, active: 2, recovery: 28,
+    hitbox: { x: 0, y: 0, w: 0, h: 0 }, motion: '236', button: 'light',
+    projectile: {
+      speed: 4.2, box: { x: 0, y: 18, w: 20, h: 22 }, life: 130,
+      hit: { damage: 40, hitstun: 18, blockstun: 14, hitstop: 6, pushbackHit: 4, pushbackBlock: 2, chip: 0.25, guard: 'mid' },
+    },
+    hit: { damage: 0, hitstun: 0, blockstun: 0, hitstop: 0, pushbackHit: 0, pushbackBlock: 0 },
+  };
+  return def;
+}
+
+// オメガノヴァ — FINAL BOSS (レイ's mech): a powerful all-rounder that hits harder
+// than anyone across the board, with a big slow dark projectile. Deliberately
+// strong (it's the wall at the top of the ladder); the pros will tune it down.
+export function makeOmeganova(): CharacterDef {
+  const def = makeDefaultCharacter('omeganova', 'オメガノヴァ');
+  def.health = 1200;
+  def.walkSpeed = 1.35;
+  def.jumpVy = 6.0;
+  def.moves.standLight.hit.damage = 34;
+  def.moves.standHeavy.hit.damage = 100;
+  def.moves.crouchHeavy.hit.damage = 72;
+  // fireball -> ダークネビュラ: a big, slow, heavy-hitting orb (boss zoning).
+  def.moves.fireball = {
+    id: 'fireball', name: 'ダークネビュラ', startup: 14, active: 2, recovery: 30,
+    hitbox: { x: 0, y: 0, w: 0, h: 0 }, motion: '236', button: 'light',
+    projectile: {
+      speed: 2.4, box: { x: 0, y: 14, w: 24, h: 26 }, life: 150,
+      hit: { damage: 60, hitstun: 20, blockstun: 16, hitstop: 8, pushbackHit: 4, pushbackBlock: 3, chip: 0.3, guard: 'mid' },
+    },
+    hit: { damage: 0, hitstun: 0, blockstun: 0, hitstop: 0, pushbackHit: 0, pushbackBlock: 0 },
+  };
+  return def;
+}
+
+// ソフィス・レギオン — HIDDEN BOSS (ノギ's mech): a technical ice fighter. Strong and
+// precise, with a frost lance that freezes the opponent in long blockstun to open
+// them up. A high-execution wall behind the final boss.
+export function makeSophislegion(): CharacterDef {
+  const def = makeDefaultCharacter('sophislegion', 'ソフィス・レギオン');
+  def.health = 1150;
+  def.walkSpeed = 1.45;
+  def.jumpVy = 6.2;
+  def.moves.standHeavy.hit.damage = 84;
+  // fireball -> フロストランス: a medium ice projectile with heavy blockstun (freeze).
+  def.moves.fireball = {
+    id: 'fireball', name: 'フロストランス', startup: 13, active: 2, recovery: 28,
+    hitbox: { x: 0, y: 0, w: 0, h: 0 }, motion: '236', button: 'light',
+    projectile: {
+      speed: 3.2, box: { x: 0, y: 16, w: 22, h: 20 }, life: 140,
+      hit: { damage: 45, hitstun: 22, blockstun: 20, hitstop: 8, pushbackHit: 3, pushbackBlock: 1, chip: 0.25, guard: 'mid' },
+    },
+    hit: { damage: 0, hitstun: 0, blockstun: 0, hitstop: 0, pushbackHit: 0, pushbackBlock: 0 },
+  };
+  return def;
+}

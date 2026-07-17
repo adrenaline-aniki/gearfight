@@ -11,7 +11,11 @@ import type { MatchConfig } from './TrainingScene';
 
 type Mode = 'arcade' | 'versus';
 
-const TYPE_COLOR: Record<string, number> = { hajime: 0x7ad0ff, wizel: 0x6affc8, ganrock: 0xffa24a };
+const TYPE_COLOR: Record<string, number> = {
+  hajime: 0x7ad0ff, wizel: 0x6affc8, ganrock: 0xffa24a,
+  aegis: 0x5a9bff, drift: 0x8be04a, theorion: 0x66d0ff,
+  omeganova: 0xb266ff, sophislegion: 0xa8f0ff,
+};
 
 export class SelectScene extends Phaser.Scene {
   private mode: Mode = 'arcade';

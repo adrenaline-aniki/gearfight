@@ -6,7 +6,11 @@
 // gear-mech drawing, so a fighter can be playable BEFORE its sprite exists
 // (Ganrock ships this way until its idle drawing lands).
 
-import { makeDefaultCharacter, makeWizel, makeGanrock, type CharacterDef } from './characterDef';
+import {
+  makeDefaultCharacter, makeWizel, makeGanrock,
+  makeAegis, makeDrift, makeTheorion, makeOmeganova, makeSophislegion,
+  type CharacterDef,
+} from './characterDef';
 import type { RigStyle } from '../graphics/PuppetRig';
 
 export interface RosterEntry {
@@ -32,6 +36,26 @@ export const ROSTER: RosterEntry[] = [
   {
     id: 'ganrock', name: 'ガンロック', make: makeGanrock,
     rig: 'ganrock', blurb: 'パワー型。GL4-5で一撃必殺、重いが熱暴走に注意。',
+  },
+  {
+    id: 'aegis', name: 'アイギス', make: makeAegis,
+    rig: 'aegis', blurb: '防御型。最も硬く重い。盾で守り、シールドタックルで割る。',
+  },
+  {
+    id: 'drift', name: 'ドリフト', make: makeDrift,
+    rig: 'drift', blurb: '機動トリックスター。オイルトラップで空間を縛り、動き回って崩す。',
+  },
+  {
+    id: 'theorion', name: 'テオリオン', make: makeTheorion,
+    rig: 'theorion', blurb: '技巧ゾナー。三日月ウェーブと長い間合いで差し合う。',
+  },
+  {
+    id: 'omeganova', name: 'オメガノヴァ', make: makeOmeganova,
+    rig: 'omeganova', blurb: '最終ボス。全能力が高い高火力の壁。',
+  },
+  {
+    id: 'sophislegion', name: 'ソフィス・レギオン', make: makeSophislegion,
+    rig: 'sophislegion', blurb: '隠しボス。氷のフロストランスで固めて崩す技巧派。',
   },
 ];
 
