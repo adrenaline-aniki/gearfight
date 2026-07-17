@@ -113,6 +113,13 @@ export class TrainingScene extends Phaser.Scene {
   private showBoxes = false;
   private boxBtn?: Phaser.GameObjects.Text;
   private titleText?: Phaser.GameObjects.Text;
+  // Touch gear SHIFTER (a car-style lever, not +/- buttons). Tapping a notch or
+  // dragging the handle shifts ONE step toward it (preserving the shift mini-game /
+  // perfect-shift); the handle syncs to the fighter's real gear every frame.
+  private shifterHandle?: Phaser.GameObjects.Rectangle;
+  private shifterTop = 0;
+  private shifterBottom = 0;
+  private shifterDragging = false;
 
   // match system: best-of-3 rounds, 60s timer, KO / time-over judgement.
   private p1def!: CharacterDef;
@@ -321,7 +328,7 @@ export class TrainingScene extends Phaser.Scene {
     }).setOrigin(0.5).setResolution(2).setDepth(62).setVisible(false);
 
     this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 10,
-      'スティック=移動/ジャンプ/しゃがみ ｜ 弱 強 投 ｜ 波 昇 超=必殺 ｜ G+/G-=ギア（2回押し＝パーフェクト）',
+      'スティック=移動/ジャンプ/しゃがみ ｜ 弱 強 投 ｜ 波 昇 超=必殺 ｜ シフター=ギア変速',
       { fontFamily: PIXEL_FONT, fontSize: '10px', color: '#556677' }).setOrigin(0.5, 1).setResolution(2);
 
     this.setupKeyboard();
@@ -437,9 +444,58 @@ export class TrainingScene extends Phaser.Scene {
     press(GAME_WIDTH - 82, by - 28, 11, '超', 0xff66cc, () => this.engine.p1.requestSpecial('super'));
     // throw (also throw-tech)
     press(GAME_WIDTH - 82, by, 12, '投', 0xaa88ff, () => { this.touchPress.throw = true; });
-    // gear
-    press(GAME_WIDTH - 22, by - 54, 11, 'G+', 0x66ddaa, () => { this.touchPress.gearUp = true; });
-    press(GAME_WIDTH - 52, by - 54, 11, 'G-', 0x66ddaa, () => { this.touchPress.gearDown = true; });
+    // gear: a car-style SHIFTER (lever) instead of +/- buttons.
+    this.buildGearShifter(GAME_WIDTH - 116, by - 66, by + 6);
+  }
+
+  /** Build the car-style gear shifter: a vertical rail with GL1 (bottom) .. GL5
+   * (top). Tapping a notch or dragging the handle shifts ONE step toward it, so
+   * the shift-lock / perfect-shift mini-game is preserved (you can't teleport to
+   * GL5). The handle syncs to the fighter's real gear each frame (updateShifter). */
+  private buildGearShifter(x: number, top: number, bottom: number) {
+    this.shifterTop = top; this.shifterBottom = bottom;
+    const g = this.add.graphics();
+    g.fillStyle(0x1b2432, 0.55); g.fillRoundedRect(x - 10, top - 12, 20, (bottom - top) + 24, 7);
+    g.lineStyle(1.5, 0x66ddaa, 0.5); g.strokeRoundedRect(x - 10, top - 12, 20, (bottom - top) + 24, 7);
+    this.add.text(x, top - 20, 'GEAR', { fontFamily: PIXEL_FONT, fontSize: '10px', color: '#8fd6b0' }).setOrigin(0.5).setResolution(2);
+    for (let gl = 1; gl <= 5; gl++) {
+      const y = bottom - ((gl - 1) / 4) * (bottom - top);
+      const notch = this.add.circle(x, y, 7, 0x3498db, 0.3).setInteractive({ useHandCursor: true });
+      notch.on('pointerdown', () => this.shiftTowardGear(gl));
+      this.add.text(x - 17, y, `${gl}`, { fontFamily: PIXEL_FONT, fontSize: '10px', color: '#9ab' }).setOrigin(0.5).setResolution(2);
+    }
+    const handle = this.add.rectangle(x, bottom, 24, 12, 0xffdd44, 0.95).setInteractive({ useHandCursor: true, draggable: true });
+    this.shifterHandle = handle;
+    let lastDrag = 0;
+    handle.on('dragstart', () => { this.shifterDragging = true; lastDrag = this.engine.p1.gear; });
+    handle.on('drag', (_p: Phaser.Input.Pointer, _dx: number, dragY: number) => {
+      const cy = Phaser.Math.Clamp(dragY, top, bottom);
+      handle.y = cy;
+      const idx = Math.round(((bottom - cy) / (bottom - top)) * 4);
+      const gl = Phaser.Math.Clamp(idx + 1, 1, 5);
+      if (gl !== lastDrag) { this.shiftTowardGear(gl); lastDrag = gl; }
+    });
+    handle.on('dragend', () => { this.shifterDragging = false; });
+  }
+
+  /** Nudge one gear toward the tapped/dragged notch (never skip - preserves the
+   * shift mini-game). Fires the same pulse the old G+/G- buttons did. */
+  private shiftTowardGear(target: number) {
+    const cur = this.engine.p1.gear;
+    if (target > cur) this.touchPress.gearUp = true;
+    else if (target < cur) this.touchPress.gearDown = true;
+  }
+
+  /** Snap the lever handle to the fighter's actual gear (unless being dragged),
+   * and tint it red while overheated (locked to GL1). */
+  private updateShifter() {
+    const h = this.shifterHandle;
+    if (!h) return;
+    const f = this.engine.p1;
+    h.setFillStyle(f.overheated ? 0xff5533 : 0xffdd44, 0.95);
+    if (this.shifterDragging) return;
+    const gl = f.overheated ? 1 : f.gear;
+    h.y = this.shifterBottom - ((gl - 1) / 4) * (this.shifterBottom - this.shifterTop);
   }
 
   // Recompute every hold button EVERY FRAME from the live pointer state (not just
@@ -982,6 +1038,7 @@ export class TrainingScene extends Phaser.Scene {
     this.drawHitFx();
     this.drawHealth();
     this.drawGearPanel();
+    this.updateShifter();
     // the raw state read-out is a lab tool - only show it with the box overlay.
     this.hudP1.setVisible(this.showBoxes);
     this.hudP2.setVisible(this.showBoxes);
