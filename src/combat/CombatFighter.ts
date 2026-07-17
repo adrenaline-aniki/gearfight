@@ -93,6 +93,17 @@ const GROUND_Y = 0;             // feet baseline in this local world; scene offs
 const BUTTON_BUFFER = 4;        // frames an attack press stays live (input leniency)
 const THROW_TECH_BUFFER = 8;    // frames a throw press stays live (also the tech window)
 const MOTION_WINDOW = 16;       // frames of directional history kept for motion inputs
+// Charge motions ([4]6 / [2]8, e.g. a tank's shield tackle): hold the charge
+// direction for CHARGE_MIN frames, then you have CHARGE_GRACE frames after
+// releasing to press the button.
+const CHARGE_MIN = 42;
+const CHARGE_GRACE = 11;
+const CHARGE_CAP = CHARGE_MIN + CHARGE_GRACE;
+const MASH_THRESHOLD = 5;      // rapid button presses to trigger a mash special
+const MASH_DECAY = 1;          // mash meter bled off per frame
+// Slot order for resolving specials (strongest first). Each character defines what
+// move (and MOTION) lives in each slot; the touch shortcut / AI trigger by slot id.
+const SPECIAL_SLOTS = ['super', 'dpunch', 'fireball'] as const;
 
 /** facing-relative (fwd,vert) -> numpad digit (6 = forward, 2 = down, etc). */
 function numpad(fwd: number, vert: number): number {
@@ -190,6 +201,13 @@ export class CombatFighter {
   // Touch shortcut: the scene can queue a special directly (a "必殺" button),
   // bypassing the motion, since clean 236/623 by finger is impractical.
   private queuedSpecial: string | null = null;
+  // Charge-motion meters ([4]6 / [2]8) and a mash meter (連打系). Assist mode lets
+  // specials fire from a direction + the special button (Smash-style), no motion.
+  private backCharge = 0;
+  private downCharge = 0;
+  private mashMeter = 0;
+  assist = false;
+  private oppX = 0; // last opponent x (for teleport repositioning)
 
   readonly def: CharacterDef;
 
@@ -237,6 +255,7 @@ export class CombatFighter {
   /** Advance one frame. opponentX is used to auto-face when neutral. */
   step(input: CommandInput, opponentX: number): StepResult {
     const result: StepResult = {};
+    this.oppX = opponentX;
 
     if (this.dead) {
       this.applyGravity();
@@ -355,10 +374,17 @@ export class CombatFighter {
   }
 
   private tickButtonBuffers(input: CommandInput) {
+    // mash meter: a fresh (rising-edge) attack press bumps it; it decays otherwise.
+    const freshPress = (input.light && this.bufLight === 0) || (input.heavy && this.bufHeavy === 0) || (input.special && this.bufSpecial === 0);
+    this.mashMeter = freshPress ? Math.min(MASH_THRESHOLD + 3, this.mashMeter + 1) : Math.max(0, this.mashMeter - MASH_DECAY);
     this.bufLight = input.light ? BUTTON_BUFFER : Math.max(0, this.bufLight - 1);
     this.bufHeavy = input.heavy ? BUTTON_BUFFER : Math.max(0, this.bufHeavy - 1);
     this.bufSpecial = input.special ? BUTTON_BUFFER : Math.max(0, this.bufSpecial - 1);
     this.bufThrow = input.throw ? THROW_TECH_BUFFER : Math.max(0, this.bufThrow - 1);
+    // charge meters: hold back / down to build, decay when not (a short grace window
+    // after release lets [4]6 / [2]8 come out).
+    this.backCharge = input.fwd < 0 ? Math.min(CHARGE_CAP, this.backCharge + 1) : Math.max(0, this.backCharge - 1);
+    this.downCharge = input.vert < 0 ? Math.min(CHARGE_CAP, this.downCharge + 1) : Math.max(0, this.downCharge - 1);
     // record facing-relative numpad direction
     const np = numpad(input.fwd, input.vert);
     if (this.dirHistory[this.dirHistory.length - 1] !== np) this.dirHistory.push(np);
@@ -379,6 +405,45 @@ export class CombatFighter {
     if (si < seq.length) return false;
     // the motion must have completed near "now" (within the last few frames).
     return hist.length - 1 - lastMatchIdx <= 3;
+  }
+
+  /** Does the current input satisfy a move's motion? Dispatches by motion family:
+   *  - 'mash'           連打系: a burst of button presses (mash meter)
+   *  - '[4]6' / '[2]8'  タメ系: hold the charge direction, then release
+   *  - '360' / '720'    コマンド投げ系: a stick rotation
+   *  - otherwise        波動/昇竜系: an ordered subsequence (236, 623, 214, 236236…) */
+  private motionMatch(motion: string, input: CommandInput): boolean {
+    if (motion === 'mash') return this.mashMeter >= MASH_THRESHOLD;
+    if (motion[0] === '[') return this.chargeMatch(motion, input);
+    if (motion === '360' || motion === '720') return this.rotationMatch();
+    return this.matchMotion(motion);
+  }
+
+  /** Charge motion: e.g. '[4]6' = hold back CHARGE_MIN frames then press forward. */
+  private chargeMatch(motion: string, input: CommandInput): boolean {
+    const chargeDir = +motion[1];
+    const releaseDir = +motion[3];
+    const np = numpad(input.fwd, input.vert);
+    if (chargeDir === 4) return this.backCharge >= CHARGE_MIN && dirMatches(np, releaseDir);
+    if (chargeDir === 2) return this.downCharge >= CHARGE_MIN && dirMatches(np, releaseDir);
+    return false;
+  }
+
+  /** Command grab motion (360/720). Accessible: a half-circle through the BOTTOM
+   * (down + both horizontals) counts, so it never has to pass through up - which
+   * would trigger a jump. Do a 4-2-6 / 6-2-4 sweep and press the button. */
+  private rotationMatch(): boolean {
+    const h = this.dirHistory;
+    const seen = (s: number[]) => h.some((d) => s.includes(d));
+    return seen([1, 2, 3]) && seen([1, 4, 7]) && seen([3, 6, 9]);
+  }
+
+  /** Assist (Smash-style): the special button + a direction selects the slot.
+   *  ↓ = super, ↑ = the rising/2nd special, neutral/side = the main special. */
+  private assistPicks(id: string, input: CommandInput): boolean {
+    if (id === 'super') return input.vert < 0;
+    if (id === 'dpunch') return input.vert > 0;
+    return input.vert === 0; // fireball slot
   }
 
   /** Touch shortcut entry point: queue a special to fire when next actionable. */
@@ -463,12 +528,23 @@ export class CombatFighter {
       this.queuedSpecial = null;
     }
 
-    // Motion specials, strongest first: super (236236) > dpunch (623) > fireball (236).
+    // Motion specials (data-driven): each slot defines its own MOTION + button.
+    // Strongest slot first. In assist mode a direction + the special button picks
+    // the slot (Smash-style); otherwise the move's motion must be performed.
     if (!airborne) {
-      if (this.bufSpecial > 0 && this.hasSpecial('super') && this.matchMotion('236236') &&
-          this.canAffordSpecial(this.def.moves['super'])) { this.bufSpecial = 0; return 'super'; }
-      if (this.bufHeavy > 0 && this.hasSpecial('dpunch') && this.matchMotion('623')) { this.bufHeavy = 0; return 'dpunch'; }
-      if (this.bufLight > 0 && this.hasSpecial('fireball') && this.matchMotion('236')) { this.bufLight = 0; return 'fireball'; }
+      for (const id of SPECIAL_SLOTS) {
+        const m = this.def.moves[id];
+        if (!m || !m.motion || !m.button || !this.canAffordSpecial(m)) continue;
+        if (this.assist) {
+          if (this.bufSpecial > 0 && this.assistPicks(id, input)) { this.bufSpecial = 0; return id; }
+        } else {
+          const buf = m.button === 'special' ? this.bufSpecial : m.button === 'heavy' ? this.bufHeavy : this.bufLight;
+          if (buf > 0 && this.motionMatch(m.motion, input)) {
+            if (m.button === 'special') this.bufSpecial = 0; else if (m.button === 'heavy') this.bufHeavy = 0; else this.bufLight = 0;
+            return id;
+          }
+        }
+      }
     }
 
     // Normals.
@@ -552,6 +628,11 @@ export class CombatFighter {
   }
 
   private stepBlock(input: CommandInput) {
+    // You can attack straight out of holding-back (guard-hold is not blockstun).
+    // This is what lets CHARGE moves ([4]6) and back-motion specials (214, teleports,
+    // 360 grabs) actually come out - the "release" frame is often still a back input.
+    const move = this.resolveAttackInput(input, false);
+    if (move) { this.startMove(move); return; }
     // Keep holding back to keep retreating/guarding; down+back = low block.
     if (input.fwd < 0) {
       if (input.vert < 0) { this.vx = 0; this.setPhase('crouchblock'); }
@@ -659,12 +740,18 @@ export class CombatFighter {
     this.moveLastHitFrame = -99;
     this.vx = 0;
     this.enterPhase('attack');
-    // アッパーシフト leaps up+forward the instant it starts (applyGravity this same
-    // frame carries it up). Set here, not in stepAttack, because a move started
-    // from neutral doesn't get its first stepAttack until the NEXT frame. Gear-
-    // linked: a higher gear cranks a taller leap (more anti-air reach, but slower
-    // to recover as it falls further).
-    if (id === 'dpunch') {
+    // Teleport (ヨガテレポート系): reposition instantly on start. 'behind' warps
+    // just past the opponent (a crossup); 'back' warps away (escape).
+    if (m.teleport) {
+      if (m.teleport.mode === 'behind') this.x = this.oppX + this.facing * m.teleport.dist;
+      else this.x = this.x - this.facing * m.teleport.dist;
+    }
+    // アッパーシフト leaps up+forward the instant it starts (but NOT a teleport or a
+    // command grab that merely occupies the dpunch slot). Set here, not in
+    // stepAttack, because a move started from neutral doesn't get its first
+    // stepAttack until the NEXT frame. Gear-linked: a higher gear cranks a taller
+    // leap (more anti-air reach, but slower to recover as it falls further).
+    if (id === 'dpunch' && !m.teleport && !m.grab) {
       this.vy = DP_LEAP_VY * (0.85 + this.gear * 0.06); // gear1 ~0.91x .. gear5 ~1.15x
       this.vx = this.facing * DP_LEAP_VX;
     }

@@ -21,6 +21,8 @@ export class SelectScene extends Phaser.Scene {
   private mode: Mode = 'arcade';
   private p1 = 0;   // roster index
   private p2 = 1;
+  private assist = false;
+  private assistBtn!: Phaser.GameObjects.Text;
   private modeBtns: Phaser.GameObjects.Text[] = [];
   private p1Name!: Phaser.GameObjects.Text;
   private p2Name!: Phaser.GameObjects.Text;
@@ -50,6 +52,12 @@ export class SelectScene extends Phaser.Scene {
     };
     mk(GAME_WIDTH / 2 - 60, 'ひとり (アーケード)', 'arcade');
     mk(GAME_WIDTH / 2 + 60, '対戦 (2P)', 'versus');
+
+    // Assist (simple inputs) toggle: specials fire from a direction + the 必殺 button.
+    this.assistBtn = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 68, '', {
+      fontFamily: PIXEL_FONT, fontSize: '10px', color: '#fff', backgroundColor: '#334', padding: { x: 8, y: 2 },
+    }).setOrigin(0.5, 0).setResolution(2).setInteractive({ useHandCursor: true });
+    this.assistBtn.on('pointerdown', () => { this.assist = !this.assist; this.refresh(); });
 
     // P1 panel (left)
     this.buildPicker(96, 'P1', 'left');
@@ -128,6 +136,8 @@ export class SelectScene extends Phaser.Scene {
       b.setColor(active ? '#eaffe0' : '#8899aa');
       b.setScale(active ? 1.05 : 1);
     }
+    this.assistBtn.setText(this.assist ? 'アシスト: ON (かんたん必殺)' : 'アシスト: OFF (コマンド)');
+    this.assistBtn.setColor(this.assist ? '#8effd0' : '#8899aa');
     const e1 = ROSTER[this.p1];
     this.p1Name.setText(e1.name);
     this.p1Blurb.setText(e1.blurb);
@@ -150,8 +160,8 @@ export class SelectScene extends Phaser.Scene {
 
   private launch() {
     const cfg: MatchConfig = this.mode === 'arcade'
-      ? { mode: 'arcade', p1: ROSTER[this.p1].id, from: 'SelectScene' }
-      : { mode: 'versus', p1: ROSTER[this.p1].id, p2: ROSTER[this.p2].id, p2human: true, from: 'SelectScene' };
+      ? { mode: 'arcade', p1: ROSTER[this.p1].id, assist: this.assist, from: 'SelectScene' }
+      : { mode: 'versus', p1: ROSTER[this.p1].id, p2: ROSTER[this.p2].id, p2human: true, assist: this.assist, from: 'SelectScene' };
     this.scene.start('TrainingScene', { config: cfg });
   }
 }

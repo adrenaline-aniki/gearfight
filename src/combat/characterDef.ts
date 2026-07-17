@@ -160,7 +160,7 @@ export function makeGanrock(): CharacterDef {
   def.moves.fireball = {
     id: 'fireball', name: 'トルクスイング', startup: 16, active: 4, recovery: 26,
     hitbox: { x: 6, y: 14, w: 44, h: 34 },
-    motion: '236', button: 'heavy',
+    motion: '[4]6', button: 'heavy', // タメ系: hold back, release forward (power/deliberate)
     advance: 2.0,
     hit: { damage: 78, hitstun: 22, blockstun: 20, hitstop: 12, pushbackHit: 6, pushbackBlock: 10, guard: 'mid', chip: 0.25, knockdown: true },
   };
@@ -209,8 +209,16 @@ export function makeAegis(): CharacterDef {
   // knocking down. The defender's way IN (it doesn't zone; it walls up and rams).
   def.moves.fireball = {
     id: 'fireball', name: 'シールドタックル', startup: 14, active: 6, recovery: 24,
-    hitbox: { x: 6, y: 14, w: 40, h: 34 }, motion: '236', button: 'heavy', advance: 2.2,
+    hitbox: { x: 6, y: 14, w: 40, h: 34 }, motion: '[4]6', button: 'heavy', advance: 2.2, // タメ系: a defender charges then rams
     hit: { damage: 70, hitstun: 20, blockstun: 18, hitstop: 11, pushbackHit: 6, pushbackBlock: 6, guard: 'mid', chip: 0.2, knockdown: true },
+  };
+  // dpunch slot -> ガードクラッシュ: a 360 COMMAND GRAB (スクリューパイルドライバー系).
+  // Unblockable and untechable - the wall's answer to a turtle who just blocks.
+  def.moves.dpunch = {
+    id: 'dpunch', name: 'ガードクラッシュ', startup: 6, active: 2, recovery: 28,
+    hitbox: { x: 0, y: 0, w: 0, h: 0 }, motion: '360', button: 'heavy',
+    grab: { range: 34, techWindow: 0 },
+    hit: { damage: 110, hitstun: 0, blockstun: 0, hitstop: 12, pushbackHit: 0, pushbackBlock: 0, knockdown: true, kdFrames: 40 },
   };
   return def;
 }
@@ -243,6 +251,14 @@ export function makeDrift(): CharacterDef {
       speed: 0, box: { x: 22, y: 0, w: 34, h: 12 }, life: 200,
       hit: { damage: 28, hitstun: 16, blockstun: 12, hitstop: 8, pushbackHit: 2, pushbackBlock: 2, guard: 'low', knockdown: true, kdFrames: 34 },
     },
+    hit: { damage: 0, hitstun: 0, blockstun: 0, hitstop: 0, pushbackHit: 0, pushbackBlock: 0 },
+  };
+  // dpunch slot -> ブリンク: a TELEPORT (ヨガテレポート系). Warps just past the
+  // opponent (a crossup / escape) - no damage, pure trickster mobility.
+  def.moves.dpunch = {
+    id: 'dpunch', name: 'ブリンク', startup: 4, active: 2, recovery: 16,
+    hitbox: { x: 0, y: 0, w: 0, h: 0 }, motion: '214', button: 'heavy',
+    teleport: { mode: 'behind', dist: 28 },
     hit: { damage: 0, hitstun: 0, blockstun: 0, hitstop: 0, pushbackHit: 0, pushbackBlock: 0 },
   };
   return def;
@@ -309,7 +325,7 @@ export function makeSophislegion(): CharacterDef {
   // fireball -> フロストランス: a medium ice projectile with heavy blockstun (freeze).
   def.moves.fireball = {
     id: 'fireball', name: 'フロストランス', startup: 13, active: 2, recovery: 28,
-    hitbox: { x: 0, y: 0, w: 0, h: 0 }, motion: '236', button: 'light',
+    hitbox: { x: 0, y: 0, w: 0, h: 0 }, motion: '[4]6', button: 'light', // タメ系: a charge-projectile zoner (Guile-like)
     projectile: {
       speed: 3.2, box: { x: 0, y: 16, w: 22, h: 20 }, life: 140,
       hit: { damage: 45, hitstun: 22, blockstun: 20, hitstop: 8, pushbackHit: 3, pushbackBlock: 1, chip: 0.25, guard: 'mid' },

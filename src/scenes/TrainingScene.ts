@@ -21,6 +21,8 @@ export interface MatchConfig {
   p2?: string;
   /** versus on the same keyboard (P2 human) instead of CPU. */
   p2human?: boolean;
+  /** assist / simple inputs: specials fire from a direction + the special button. */
+  assist?: boolean;
   from?: string;
 }
 
@@ -222,6 +224,7 @@ export class TrainingScene extends Phaser.Scene {
     this.accumulator = 0;
     // versus = local 2P on the keyboard; arcade/training use the CPU.
     this.p2Keyboard = this.cfg.mode === 'versus' && !!this.cfg.p2human;
+    this.applyAssist();
 
     // World layer (logical space, scaled up to the hi-res canvas). Everything that
     // is drawn in engine coordinates goes in here; the UI stays in screen space.
@@ -728,8 +731,17 @@ export class TrainingScene extends Phaser.Scene {
     this.resetEngine();
   }
 
+  /** Turn on assist (simple inputs) for the human-controlled fighter(s). The CPU
+   * uses the direct requestSpecial shortcut, so it's unaffected either way. */
+  private applyAssist() {
+    const on = !!this.cfg.assist;
+    this.engine.p1.assist = on;                 // P1 is always human
+    this.engine.p2.assist = on && this.p2Keyboard; // P2 only when a human plays it
+  }
+
   private resetEngine() {
     this.engine = new CombatEngine(cloneCharacter(this.p1def), cloneCharacter(this.p2def));
+    this.applyAssist();
     this.ai.reset();
     this.hitFx.length = 0;
     this.koFlashed = false;

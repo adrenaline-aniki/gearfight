@@ -58,8 +58,15 @@ export interface HitProps {
 export type MoveId = string;
 
 /** Motion command in numpad notation, facing-relative (6 = forward, 2 = down,
- * 3 = down-forward, etc). Undefined = a plain button normal. */
-export type Motion = '236' | '623' | '214' | '236236' | undefined;
+ * 3 = down-forward, etc). Undefined = a plain button normal. Families:
+ *  - subsequence: '236' (波動) '623' (昇竜) '214' '41236' '236236'
+ *  - charge:      '[4]6' '[2]8' (タメ - hold then release)
+ *  - rotation:    '360' '720' (コマンド投げ - スクリューパイルドライバー系)
+ *  - mash:        'mash' (連打系) */
+export type Motion =
+  | '236' | '623' | '214' | '41236' | '236236'
+  | '[4]6' | '[2]8' | '360' | '720' | 'mash'
+  | undefined;
 
 export interface ProjectileSpec {
   /** travel speed (world px/frame, forward). */
@@ -116,6 +123,9 @@ export interface MoveData {
   /** command grab: on the active frame the engine attempts a grab (unblockable,
    * ignores the melee hitbox) within `range`, techable within `techWindow`. */
   grab?: { range: number; techWindow: number };
+  /** teleport (ヨガテレポート系): repositions the fighter when the move starts.
+   * 'behind' warps just past the opponent (crossup); 'back' warps away. */
+  teleport?: { mode: 'behind' | 'back'; dist: number };
 }
 
 /** One frame of player intent, already resolved to facing-relative directions. */
