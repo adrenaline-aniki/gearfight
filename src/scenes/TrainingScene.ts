@@ -8,13 +8,14 @@ import { loadCharacter } from '../combat/characterStore';
 import { ROSTER, rosterEntry, rigIdForDef, rigStyleFor } from '../combat/roster';
 import { CombatAI, type DummyMode } from '../combat/CombatAI';
 import { PuppetRig, type RigData } from '../graphics/PuppetRig';
+import { TUTORIAL_STEPS } from '../data/tutorialSteps';
 
 // rig-capable characters (have puppet-rig art); everyone else draws as the mech.
 const RIG_CHARS = ROSTER.filter((r) => r.rig).map((r) => r.rig as string);
 
 /** How a match/arcade/training session is set up. Passed to init(). */
 export interface MatchConfig {
-  mode: 'training' | 'versus' | 'arcade';
+  mode: 'training' | 'versus' | 'arcade' | 'tutorial';
   /** roster id for P1 (falls back to the saved/edited char in training). */
   p1?: string;
   /** roster id for P2 (versus / a fixed training dummy). */
@@ -160,6 +161,15 @@ export class TrainingScene extends Phaser.Scene {
   private nameP1?: Phaser.GameObjects.Text;
   private nameP2?: Phaser.GameObjects.Text;
 
+  // tutorial (ノギ先生-guided, learn-by-doing)
+  private tutStep = -1;
+  private tutFlags: Record<string, number | boolean> = {};
+  private tutPrevMove: string | null = null;
+  private tutDoneTimer = 0; // shows a ✓ beat before advancing
+  private tutPanel?: Phaser.GameObjects.Graphics;
+  private tutText?: Phaser.GameObjects.Text;
+  private tutProg?: Phaser.GameObjects.Text;
+
   constructor() {
     super('TrainingScene');
   }
@@ -208,6 +218,10 @@ export class TrainingScene extends Phaser.Scene {
    * old behaviour (edited/saved char, else Hajime, vs a Wizel dummy); versus and
    * arcade build both sides from the roster selection. */
   private resolveDefs(): { p1: CharacterDef; p2: CharacterDef } {
+    if (this.cfg.mode === 'tutorial') {
+      // learn on Hajime (the textbook character) against a Wizel practice dummy.
+      return { p1: rosterEntry('hajime').make(), p2: rosterEntry('wizel').make() };
+    }
     if (this.cfg.mode === 'training') {
       const p1 = this.testDef ?? (this.hasSavedChar() ? loadCharacter() : rosterEntry('hajime').make());
       const p2 = rosterEntry(this.cfg.p2 ?? 'wizel').make();
@@ -363,6 +377,12 @@ export class TrainingScene extends Phaser.Scene {
       this.hideLabChrome();
       this.refreshNames();
       this.startMatch();
+    } else if (this.cfg.mode === 'tutorial') {
+      this.hideLabChrome();
+      this.engine.p1.gear = 3; this.engine.p2.gear = 3; // start mid-gear for the gear lessons
+      this.refreshNames();
+      this.buildTutorialUI();
+      this.tutAdvance(0);
     } else {
       this.refreshNames();
     }
@@ -679,6 +699,7 @@ export class TrainingScene extends Phaser.Scene {
       }
       // presses are consumed after the frame's sub-steps
       this.clearPresses();
+      if (this.cfg.mode === 'tutorial') this.tutorialCheck();
       this.draw();
     } catch (err) {
       this.accumulator = 0;
@@ -700,6 +721,7 @@ export class TrainingScene extends Phaser.Scene {
       : this.ai.update(this.engine.p2, this.engine.p1, mode);
     this.engine.step(in1, in2);
     this.consumeHits();
+    if (this.cfg.mode === 'tutorial') this.tutorialTrack();
   }
 
   /** Turn this frame's engine events into impact juice: hit sparks, gear-break
@@ -923,6 +945,92 @@ export class TrainingScene extends Phaser.Scene {
     this.p2def = rosterEntry(this.cfg.p2).make();
     this.refreshNames();
     this.startMatch();
+  }
+
+  // ---- tutorial (ノギ先生-guided) ---------------------------------------
+
+  private buildTutorialUI() {
+    this.tutPanel = this.add.graphics().setDepth(80);
+    this.tutText = this.add.text(GAME_WIDTH / 2, 80, '', {
+      fontFamily: PIXEL_FONT, fontSize: '10px', color: '#eef6ff', align: 'left',
+    }).setOrigin(0.5, 0).setResolution(2).setWordWrapWidth(GAME_WIDTH - 56, true).setDepth(81);
+    this.tutProg = this.add.text(GAME_WIDTH - 30, 68, '', {
+      fontFamily: PIXEL_FONT, fontSize: '10px', color: '#8fd6ff',
+    }).setOrigin(1, 0).setResolution(2).setDepth(81);
+    this.add.text(30, 68, 'ノギ先生', {
+      fontFamily: PIXEL_FONT, fontSize: '10px', color: '#ffe37a', fontStyle: 'bold',
+    }).setResolution(2).setDepth(81);
+  }
+
+  /** Start showing step `i` (reset its detection flags + set the dummy's mode). */
+  private tutAdvance(i: number) {
+    this.tutStep = i;
+    this.tutFlags = {};
+    this.tutPrevMove = null;
+    this.tutDoneTimer = 0;
+    if (i >= TUTORIAL_STEPS.length) { this.scene.start('ModeSelectScene'); return; }
+    const step = TUTORIAL_STEPS[i];
+    this.dummyMode = step.dummy === 'cpu' ? 'cpu' : 'stand';
+    this.ai.reset();
+    this.showTutText(step.text, i);
+  }
+
+  private showTutText(text: string, i: number) {
+    this.tutText?.setText(text);
+    this.tutProg?.setText(`${i + 1}/${TUTORIAL_STEPS.length}`);
+    // size the panel to the wrapped text
+    const t = this.tutText;
+    const h = t ? t.height : 40;
+    this.tutPanel?.clear();
+    this.tutPanel?.fillStyle(0x0a1420, 0.82).fillRoundedRect(20, 64, GAME_WIDTH - 40, h + 30, 6);
+    this.tutPanel?.lineStyle(1, 0x3a5a7a, 0.9).strokeRoundedRect(20, 64, GAME_WIDTH - 40, h + 30, 6);
+  }
+
+  /** Accumulate what the player has done this step (called per engine frame). */
+  private tutorialTrack() {
+    const p = this.engine.p1;
+    const f = this.tutFlags;
+    if (p.phase === 'walk') { if (p.vx < 0) f.walkedL = true; else if (p.vx > 0) f.walkedR = true; }
+    if (p.phase === 'crouch' || p.phase === 'crouchblock') f.crouched = true;
+    if (p.phase === 'jumpsquat' || p.phase === 'air') f.jumped = true;
+    if (p.phase === 'blockstun') f.blocked = true;
+    if (p.perfectShiftFx > 0) f.perfectShift = true;
+    const mv = p.move;
+    if (mv && mv !== this.tutPrevMove) {
+      if (mv === 'standLight') { f.lightCount = ((f.lightCount as number) || 0) + 1; f.pressedLight = true; }
+      if (mv === 'standHeavy') f.heavyDone = true;
+      if (mv === 'fireball') f.command = true;
+    }
+    this.tutPrevMove = mv;
+    if (this.engine.lastHits.some((h) => h.attacker === p && h.thrown)) f.threw = true;
+  }
+
+  /** Has the current step's goal been met? Advance (with a brief ✓) if so. */
+  private tutorialCheck() {
+    if (this.tutStep < 0) return;
+    if (this.tutDoneTimer > 0) { if (--this.tutDoneTimer === 0) this.tutAdvance(this.tutStep + 1); return; }
+    const p = this.engine.p1;
+    const f = this.tutFlags;
+    const step = TUTORIAL_STEPS[this.tutStep];
+    let done = false;
+    switch (step.goal) {
+      case 'move': done = !!f.walkedL && !!f.walkedR; break;
+      case 'crouchjump': done = !!f.crouched && !!f.jumped; break;
+      case 'light3': done = ((f.lightCount as number) || 0) >= 3; break;
+      case 'heavy': done = !!f.heavyDone; break;
+      case 'block': done = !!f.blocked; break;
+      case 'throw': done = !!f.threw; break;
+      case 'gearup5': done = p.gear >= 5; break;
+      case 'geardown1': done = p.gear === 1; break;
+      case 'perfectshift': done = !!f.perfectShift; break;
+      case 'command': done = !!f.command; break;
+      case 'info': case 'done': done = !!f.pressedLight; break;
+    }
+    if (done) {
+      if (step.goal === 'done') { this.tutText?.setText('クリア！ おつかれさま。'); this.tutDoneTimer = 60; return; }
+      this.tutText?.setText('よくできた！ ✓');
+      this.tutDoneTimer = 32;
+    }
   }
 
   private refreshNames() {
