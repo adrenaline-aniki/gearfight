@@ -52,9 +52,9 @@ export class SelectScene extends Phaser.Scene {
     mk(GAME_WIDTH / 2 + 60, '対戦 (2P)', 'versus');
 
     // P1 panel (left)
-    this.buildPicker(70, 'P1', 'left');
+    this.buildPicker(96, 'P1', 'left');
     // P2 panel (right)
-    this.buildPicker(GAME_WIDTH - 70, 'P2', 'right');
+    this.buildPicker(GAME_WIDTH - 96, 'P2', 'right');
 
     // START / back
     const start = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 48, '▶ はじめる', {

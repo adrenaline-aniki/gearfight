@@ -80,6 +80,9 @@ export class PuppetRig {
 
   setVisible(v: boolean) { this.root.setVisible(v); }
   destroy() { this.root.destroy(); }
+  /** Move this rig's display object into a parent container (e.g. a scaled world
+   * layer) so it renders in that layer's transform. */
+  setParent(container: Phaser.GameObjects.Container) { container.add(this.root); }
 
   sync(f: CombatFighter, fx: number, feetY: number, displayH: number, facing: 1 | -1) {
     this.root.setVisible(true);

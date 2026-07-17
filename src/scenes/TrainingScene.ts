@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GAME_WIDTH, GAME_HEIGHT, GROUND_Y, PIXEL_FONT } from '../config/constants';
+import { GAME_WIDTH, GAME_HEIGHT, LOGICAL_GROUND_Y, LOGICAL_WORLD_W, WORLD_SCALE, PIXEL_FONT } from '../config/constants';
 import { CombatEngine, projectileWorld } from '../combat/CombatEngine';
 import { CombatFighter } from '../combat/CombatFighter';
 import { EMPTY_COMMAND, type CommandInput } from '../combat/types';
@@ -43,6 +43,10 @@ interface RawHold { left: boolean; right: boolean; up: boolean; down: boolean; }
 
 export class TrainingScene extends Phaser.Scene {
   private engine!: CombatEngine;
+  // The world layer: fighters/boxes/FX are drawn here in the engine's LOGICAL
+  // (~384-wide) space, and this container is scaled up to fill the hi-res canvas.
+  // The UI (health/gauges/buttons/text) lives outside it in screen space.
+  private world!: Phaser.GameObjects.Container;
   private gfx!: Phaser.GameObjects.Graphics;
   private capsuleGfx!: Phaser.GameObjects.Graphics;
   private hudP1!: Phaser.GameObjects.Text;
@@ -219,19 +223,26 @@ export class TrainingScene extends Phaser.Scene {
     // versus = local 2P on the keyboard; arcade/training use the CPU.
     this.p2Keyboard = this.cfg.mode === 'versus' && !!this.cfg.p2human;
 
-    // ground line
+    // World layer (logical space, scaled up to the hi-res canvas). Everything that
+    // is drawn in engine coordinates goes in here; the UI stays in screen space.
+    this.world = this.add.container(0, 0).setScale(WORLD_SCALE);
+
+    // ground line (logical coords; the world container scales it to the screen)
     const ground = this.add.graphics();
     ground.lineStyle(1, 0x2a3a4a, 1);
-    ground.lineBetween(0, GROUND_Y, GAME_WIDTH, GROUND_Y);
+    ground.lineBetween(0, LOGICAL_GROUND_Y, LOGICAL_WORLD_W, LOGICAL_GROUND_Y);
     ground.fillStyle(0x0a0f14, 1);
-    ground.fillRect(0, GROUND_Y, GAME_WIDTH, GAME_HEIGHT - GROUND_Y);
+    ground.fillRect(0, LOGICAL_GROUND_Y, LOGICAL_WORLD_W, GAME_HEIGHT - LOGICAL_GROUND_Y);
+    this.world.add(ground);
 
     this.capsuleGfx = this.add.graphics();
+    this.world.add(this.capsuleGfx);
     // skin sprites sit above the mech layer but below the hitbox/particle overlay
     this.skinImgs = [
       this.add.image(0, 0, '__DEFAULT').setVisible(false),
       this.add.image(0, 0, '__DEFAULT').setVisible(false),
     ];
+    this.world.add(this.skinImgs);
     // Build a puppet rig per slot from that slot's character (created here so it
     // renders under the hitbox overlay). Falls back to the mech if art is absent.
     // Build a rig instance for every (slot, rig-capable character) pair; drawFighter
@@ -241,10 +252,13 @@ export class TrainingScene extends Phaser.Scene {
       for (const rigId of RIG_CHARS) {
         const rd = this.cache.json.get(`${rigId}Rig`) as RigData | undefined;
         if (!rd || !this.textures.exists(`rig_${rigId}_torso`)) continue;
-        this.rigsBySlot[slot][rigId] = new PuppetRig(this, rd, `rig_${rigId}_`, 0, rigStyleFor(rigId));
+        const rig = new PuppetRig(this, rd, `rig_${rigId}_`, 0, rigStyleFor(rigId));
+        rig.setParent(this.world); // render inside the scaled world layer
+        this.rigsBySlot[slot][rigId] = rig;
       }
     }
     this.gfx = this.add.graphics();
+    this.world.add(this.gfx); // hitboxes / particles / projectiles, on top of the fighters
 
     // health bars (simple)
     this.healthBarP1 = this.add.graphics();
@@ -636,9 +650,9 @@ export class TrainingScene extends Phaser.Scene {
     const cam = this.cameras.main;
     for (const h of this.engine.lastHits) {
       const cx = h.projectile ? h.defender.x : (h.attacker.x + h.defender.x) / 2;
-      const cy = GROUND_Y - 26;
-      if (h.teched) { this.spawnBurst(cx, GROUND_Y - 24, 0x99ddff, 8, 1.4); cam.shake(90, 0.004); continue; }
-      if (h.thrown) { this.spawnBurst(cx, GROUND_Y - 20, 0xffcc66, 14, 2.2); cam.shake(160, 0.010); continue; }
+      const cy = LOGICAL_GROUND_Y - 26;
+      if (h.teched) { this.spawnBurst(cx, LOGICAL_GROUND_Y - 24, 0x99ddff, 8, 1.4); cam.shake(90, 0.004); continue; }
+      if (h.thrown) { this.spawnBurst(cx, LOGICAL_GROUND_Y - 20, 0xffcc66, 14, 2.2); cam.shake(160, 0.010); continue; }
       if (h.blocked) { this.spawnBurst(cx, cy, 0x66ccff, 7, 1.2); cam.shake(70, 0.003); continue; }
       const heavy = h.damage >= 70 || h.guardBreak;
       this.spawnBurst(cx, cy, h.guardBreak ? 0xffee66 : 0xffffff, heavy ? 18 : 11, heavy ? 2.6 : 1.8);
@@ -653,7 +667,7 @@ export class TrainingScene extends Phaser.Scene {
     const fs = [this.engine.p1, this.engine.p2] as const;
     for (let i = 0; i < 2; i++) {
       if (fs[i].perfectShiftFx > 0 && this.prevPerf[i] === 0) {
-        this.spawnBurst(fs[i].x, GROUND_Y - 30, 0x7affc8, 12, 2.0);
+        this.spawnBurst(fs[i].x, LOGICAL_GROUND_Y - 30, 0x7affc8, 12, 2.0);
         cam.flash(90, 40, 255, 160, false);
       }
       this.prevPerf[i] = fs[i].perfectShiftFx;
@@ -661,7 +675,7 @@ export class TrainingScene extends Phaser.Scene {
       if (fs[i].move === 'super' && this.prevMove[i] !== 'super') {
         cam.flash(200, 255, 225, 90, false);
         cam.shake(160, 0.008);
-        this.spawnBurst(fs[i].x, GROUND_Y - 28, 0xffe14a, 22, 2.6);
+        this.spawnBurst(fs[i].x, LOGICAL_GROUND_Y - 28, 0xffe14a, 22, 2.6);
         this.superShown = 40;
       }
       this.prevMove[i] = fs[i].move;
@@ -949,8 +963,8 @@ export class TrainingScene extends Phaser.Scene {
     for (const proj of this.engine.projectiles) {
       const wb = projectileWorld(proj);
       const px = (wb.xmin + wb.xmax) / 2, r = (wb.xmax - wb.xmin) / 2 + 1;
-      TrainingScene.drawGear(g, px, GROUND_Y - (wb.ymin + wb.ymax) / 2, r, proj.spin, 0xffdd33);
-      g.fillStyle(0xfff4b0, 0.9); g.fillCircle(px, GROUND_Y - (wb.ymin + wb.ymax) / 2, r * 0.28);
+      TrainingScene.drawGear(g, px, LOGICAL_GROUND_Y - (wb.ymin + wb.ymax) / 2, r, proj.spin, 0xffdd33);
+      g.fillStyle(0xfff4b0, 0.9); g.fillCircle(px, LOGICAL_GROUND_Y - (wb.ymin + wb.ymax) / 2, r * 0.28);
     }
 
     this.drawHitFx();
@@ -1067,7 +1081,7 @@ export class TrainingScene extends Phaser.Scene {
     const push = f.getPushbox();
     const cx = (push.xmin + push.xmax) / 2;
     const fw = push.xmax - push.xmin;
-    const feetY = GROUND_Y - push.ymin; // screen y of feet (up = -y in this space)
+    const feetY = LOGICAL_GROUND_Y - push.ymin; // logical y of feet (up = -y); world layer scales it
     const figH = push.ymax - push.ymin;
     const dir = f.facing;
 
@@ -1230,7 +1244,7 @@ export class TrainingScene extends Phaser.Scene {
   private strokeWorld(g: Phaser.GameObjects.Graphics, b: { xmin: number; xmax: number; ymin: number; ymax: number },
                       lineColor: number, fillAlpha: number, fillColor: number, lineAlpha = 1) {
     const x = b.xmin, w = b.xmax - b.xmin;
-    const top = GROUND_Y - b.ymax, h = b.ymax - b.ymin;
+    const top = LOGICAL_GROUND_Y - b.ymax, h = b.ymax - b.ymin;
     if (fillAlpha > 0) { g.fillStyle(fillColor, fillAlpha); g.fillRect(x, top, w, h); }
     g.lineStyle(1, lineColor, lineAlpha);
     g.strokeRect(x, top, w, h);

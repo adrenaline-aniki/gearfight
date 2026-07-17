@@ -1,7 +1,16 @@
-export const GAME_WIDTH = 384;
-export const GAME_HEIGHT = 216;
+export const GAME_WIDTH = 480;
+export const GAME_HEIGHT = 270;
 export const FPS = 60;
-export const GROUND_Y = 170;
+export const GROUND_Y = 212;
+
+// The new-engine match renders its world (fighters/boxes/FX) in a container scaled
+// by this factor: the combat engine stays in its original ~384-wide LOGICAL space
+// (so frame data / ranges / balance are untouched), while the presentation fills
+// the higher-resolution canvas and the high-res rigs gain ~25% more detail.
+export const LOGICAL_WORLD_W = 384;
+export const WORLD_SCALE = GAME_WIDTH / LOGICAL_WORLD_W; // 1.25
+// Ground line in the LOGICAL world space (screen ground = GROUND_Y; logical = this).
+export const LOGICAL_GROUND_Y = Math.round(GROUND_Y / WORLD_SCALE); // ~170
 
 // Bitmap-style font (full JP glyph coverage); sized in multiples of 10 to
 // stay pixel-aligned with its native 10x10 glyph grid and avoid blurry scaling.
