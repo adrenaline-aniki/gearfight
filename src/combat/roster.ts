@@ -39,7 +39,7 @@ export const ROSTER: RosterEntry[] = [
   },
   {
     id: 'aegis', name: 'アイギス', make: makeAegis,
-    rig: 'aegis', blurb: '防御型。最も硬く重い。盾で守り、シールドタックルで割る。',
+    rig: 'aegis', rigStyle: { shieldArm: true }, blurb: '防御型。最も硬く重い。盾で守り、シールドタックルで割る。',
   },
   {
     id: 'drift', name: 'ドリフト', make: makeDrift,

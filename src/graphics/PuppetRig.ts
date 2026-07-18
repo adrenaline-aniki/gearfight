@@ -25,8 +25,10 @@ export interface RigData {
 interface Bone { name: string; part: string; pivot: [number, number]; children?: Bone[]; }
 
 /** Per-character posing hints. `bladeArm` = the character's weapon is the back
- * (armL) blade, so its rush slashes with armL instead of punching with armR. */
-export interface RigStyle { bladeArm?: boolean; }
+ * (armL) blade, so its rush slashes with armL instead of punching with armR.
+ * `shieldArm` = the back arm carries a SHIELD: guarding raises IT to the front
+ * (the shield does the blocking, not the fist). */
+export interface RigStyle { bladeArm?: boolean; shieldArm?: boolean; }
 
 // The bone TREE (names + hierarchy + z-order) is the same for every humanoid
 // character. Only the joint PIVOTS differ per character - those come from the
@@ -121,8 +123,13 @@ export class PuppetRig {
     this.needSnap = false;
     const tgSq = pose.squashY ?? 1;
     const tgRot = (pose.rot ?? 0) * facing;
-    const tgDx = pose.dx ?? 0;
-    const tgDy = pose.dy ?? 0;
+    // dx/dy are authored in REFERENCE-canvas units (800-tall): normalize by the
+    // actual canvas so a lunge is the same on-screen size for every character.
+    // (Without this, dx was implicitly scaled by display/canvas ≈ 0.07 - a
+    // "20px lunge" moved the body barely 1px, which is why punches didn't read.)
+    const u = this.ch / 800;
+    const tgDx = (pose.dx ?? 0) * u;
+    const tgDy = (pose.dy ?? 0) * u;
     this.smSquash += (tgSq - this.smSquash) * k;
     this.smRot += (tgRot - this.smRot) * k;
     this.smDx += (tgDx - this.smDx) * k;
@@ -163,7 +170,7 @@ export class PuppetRig {
       // counterbalance made the blade "flap". Only the free (fist) arm swings.
       if (!this.style.bladeArm) A.armL = -0.13 * Math.sin(p + Math.PI);
     }
-    return Math.abs(Math.sin(p)) * 4;
+    return Math.abs(Math.sin(p)) * 30;
   }
 
   private poseFor(f: CombatFighter): { angles: Record<string, number>; dx?: number; dy?: number; squashY?: number; rot?: number } {
@@ -179,71 +186,86 @@ export class PuppetRig {
         // the floor - the upper body stays full-size (no shrink/"Minimize").
         A.legR = 0.45; A.legL = -0.45; A.legRShin = 1.6; A.legLShin = 1.6;
         A.torso = 0.12; A.head = 0.1; A.armR = -0.15;
-        return { angles: A, dy: 120 };
+        return { angles: A, dy: 170 };
       }
       case 'jumpsquat': case 'air': {
         A.legR = -0.2; A.legL = 0.2; A.legRShin = 0.9; A.legLShin = 0.5; A.armL = -0.3; A.armR = -0.15;
         return { angles: A };
       }
       case 'block': {
+        if (this.style.shieldArm) {
+          // Shield bearer (アイギス): the SHIELD arm swings up to the front and
+          // does the blocking; the fist stays chambered, body braces behind it.
+          A.armL = -1.35; A.armR = -0.15; A.head = 0.05; A.torso = 0.08;
+          if (moving) return { angles: A, dx: 25, dy: this.stride(A, false) };
+          return { angles: A, dx: 25 };
+        }
         A.armR = -0.55; A.armL = -0.2; A.head = 0.04;
         // retreating (holding back) is the guard-ready phase - still step the legs
         if (moving) return { angles: A, dy: this.stride(A, false) };
         return { angles: A };
       }
       case 'attack': case 'airattack': {
-        // snap to full extension fast (by ~frame 3) so the arm is fully out
+        // snap to full extension fast (by ~frame 2) so the arm is fully out
         // during the brief active frames, not still ramping.
-        const t = Math.min(1, f.phaseFrame / 3);
+        const t = Math.min(1, f.phaseFrame / 2);
         const heavy = (f.move ?? '').includes('Heavy') || f.move === 'dpunch' || f.move === 'super';
         if (f.move === 'dpunch') {                          // rising anti-air
           if (this.style.bladeArm) {                        // Wizel: ライジングエッジ - blade whips up
             A.armL = 2.3 * t;                               // back-arm blade sweeps skyward
             A.armR = -0.3 * t; A.head = -0.08 * t; A.torso = -0.05 * t;
             A.legR = -0.3 * t; A.legRShin = 0.6 * t;
-            return { angles: A, dy: -20 * t };
+            return { angles: A, dy: -60 * t };
           }
           A.armR = -2.1 * t; A.armRFore = 0.5 * t; A.legR = -0.3 * t; A.legRShin = 0.6 * t;
-          return { angles: A, dy: -20 * t };
+          return { angles: A, dy: -60 * t };
         }
         if (f.move === 'throw') {                            // grab: both arms clutch forward
           A.armR = -0.95 * t; A.armRFore = 0.85 * t; A.armL = 0.7 * t; A.head = 0.05 * t;
-          return { angles: A, dx: 8 * t };
+          return { angles: A, dx: 70 * t };
         }
         if (f.move === 'super') {                            // ギアマックス: 乱舞 flurry
           const pump = Math.sin(f.phaseFrame * 0.85);        // fast alternating jabs
           A.armR = -1.15 - 0.25 * pump; A.armRFore = 1.1 + 0.3 * pump;
           A.armL = -0.5 + 0.7 * pump;                        // back arm alternates forward
           A.head = -0.08; A.torso = 0.14;
-          return { angles: A, dx: 22 };
+          return { angles: A, dx: 170 };
         }
         if (f.move === 'fireball') {
           if (this.style.bladeArm) {                         // Wizel: forward blade-rush slashes
             const slash = Math.sin(f.phaseFrame * 0.7);
             A.armL = 1.15 + 0.5 * slash;                     // back-arm blade sweeps across the front
             A.armR = -0.35; A.head = -0.06; A.torso = 0.16;
-            return { angles: A, dx: 20 };
+            return { angles: A, dx: 160 };
           }
           // Hajime: throw the gear-shot forward
           A.armR = -1.1 * t; A.armRFore = 1.0 * t; A.armL = 0.2 * t; A.head = -0.05 * t;
-          return { angles: A, dx: 10 * t };
+          return { angles: A, dx: 100 * t };
         }
         // straight punch: swing the upper arm up to horizontal AND open the elbow
-        // (positive forearm) so the fist reaches far forward, and step the body
-        // into it so the lunge reads even at small scale.
-        A.armR = (heavy ? -1.3 : -1.15) * t;
-        A.armRFore = (heavy ? 1.35 : 1.15) * t;
+        // (positive forearm) so the fist reaches far forward, and STEP INTO IT -
+        // the body lunge carries most of the forward read at chibi proportions.
+        A.armR = (heavy ? -1.5 : -1.3) * t;
+        A.armRFore = (heavy ? 1.5 : 1.3) * t;
         // Blade characters keep the weapon arm planted during a fist punch (no
         // counter-swing = no "flapping" blade); everyone else swings it slightly.
         A.armL = this.style.bladeArm ? 0 : 0.28 * t;
-        A.head = -0.06 * t; A.torso = 0.1 * t;
-        return { angles: A, dx: (heavy ? 28 : 20) * t };
+        A.head = -0.06 * t; A.torso = (heavy ? 0.18 : 0.12) * t;
+        return { angles: A, dx: (heavy ? 200 : 150) * t };
       }
-      case 'hitstun': case 'blockstun': {
+      case 'blockstun': {
+        // a BLOCKED hit: hold the guard (shield stays up for a shield bearer)
+        // and just rock back - visually distinct from actually getting hit.
+        if (this.style.shieldArm) { A.armL = -1.35; A.armR = -0.15; A.torso = 0.1; }
+        else { A.armR = -0.55; A.armL = -0.2; A.torso = 0.06; }
+        A.head = 0.05;
+        return { angles: A, dx: -60 };
+      }
+      case 'hitstun': {
         // snap the head/torso back, arms fly up - a clear flinch
         A.head = -0.5; A.torso = -0.12; A.armR = 0.55; A.armRFore = -0.4;
         A.armL = 0.5; A.legR = -0.18; A.legRShin = 0.35;
-        return { angles: A, dx: -14 };
+        return { angles: A, dx: -100 };
       }
       case 'thrown': {
         // grabbed then swung: held stiff at first, then flailing and tipping
@@ -252,7 +274,7 @@ export class PuppetRig {
         A.head = 0.35 * fl; A.torso = -0.2 * fl;
         A.armR = 0.9 * fl; A.armL = 0.75 * fl;
         A.legR = -0.3 * fl; A.legRShin = 0.5 * fl; A.legL = 0.3 * fl; A.legLShin = 0.45 * fl;
-        return { angles: A, rot: -1.15 * fl, dx: -3 };
+        return { angles: A, rot: -1.15 * fl, dx: -25 };
       }
       case 'launched': {
         // airborne tumble after a launching hit: back arched, limbs flailing, the
@@ -263,14 +285,14 @@ export class PuppetRig {
         A.armR = 0.85; A.armRFore = -0.5; A.armL = 0.7;
         A.legR = -0.35; A.legRShin = 0.5; A.legL = 0.35; A.legLShin = 0.5;
         const spin = -Math.min(1.5, 0.35 + f.phaseFrame * 0.05);
-        return { angles: A, rot: spin, dx: -4 };
+        return { angles: A, rot: spin, dx: -35 };
       }
       case 'knockdown': {
         // actually TIP OVER onto the back (whole body rotates ~80deg about the
         // feet), legs bent up, arms sprawled - lying on the floor, not buried.
         A.legR = 0.5; A.legL = 0.75; A.legRShin = 1.0; A.legLShin = 1.0;
         A.head = 0.35; A.armL = 0.6; A.armR = 0.5;
-        return { angles: A, rot: -1.35, dx: -6 };
+        return { angles: A, rot: -1.35, dx: -45 };
       }
       case 'dizzy': {
         // woozy wobble: body sways, head lolls, arms hang loose (stars drawn by
@@ -279,12 +301,12 @@ export class PuppetRig {
         A.head = 0.28 * w; A.torso = 0.1 * w;
         A.armR = 0.3 + 0.15 * w; A.armL = -0.3 - 0.15 * w;
         A.legR = 0.1 * w; A.legL = -0.1 * w;
-        return { angles: A, dx: Math.sin(this.clock / 24) * 10 };
+        return { angles: A, dx: Math.sin(this.clock / 24) * 70 };
       }
       default: {
         const b = Math.sin(this.clock / 42);
         A.head = 0.02 * b; A.armR = 0.03 * b; A.armL = -0.02 * b;
-        return { angles: A, dy: -1.5 * b };
+        return { angles: A, dy: -10 * b };
       }
     }
   }
