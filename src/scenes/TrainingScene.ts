@@ -9,6 +9,8 @@ import { ROSTER, rosterEntry, rigIdForDef, rigStyleFor } from '../combat/roster'
 import { CombatAI, type DummyMode } from '../combat/CombatAI';
 import { PuppetRig, type RigData } from '../graphics/PuppetRig';
 import { TUTORIAL_STEPS } from '../data/tutorialSteps';
+import { AudioManager } from '../systems/AudioManager';
+import { spawnMechanismOverlay } from '../systems/MechanismOverlay';
 
 // rig-capable characters (have puppet-rig art); everyone else draws as the mech.
 const RIG_CHARS = ROSTER.filter((r) => r.rig).map((r) => r.rig as string);
@@ -121,6 +123,16 @@ export class TrainingScene extends Phaser.Scene {
   private shifterTop = 0;
   private shifterBottom = 0;
   private shifterDragging = false;
+  // "重さと間" presentation layer: sound, dynamic camera (world zoom/pan), KO
+  // slow-mo, super darken veil, mechanism overlay cadence, hitstop victim jitter.
+  private audio!: AudioManager;
+  private camZoom = 1;         // extra zoom on top of WORLD_SCALE (eases toward target)
+  private camX = 0;            // smoothed world-container x offset
+  private koSlowmo = 0;        // render frames of KO slow motion left
+  private veil?: Phaser.GameObjects.Rectangle;
+  private mechCd = 0;          // frames until the next mechanism overlay may spawn
+  private shakeVictim: CombatFighter | null = null;
+  private prevGears: [number, number] = [1, 1];
 
   // match system: best-of-3 rounds, 60s timer, KO / time-over judgement.
   private p1def!: CharacterDef;
@@ -250,6 +262,17 @@ export class TrainingScene extends Phaser.Scene {
     // World layer (logical space, scaled up to the hi-res canvas). Everything that
     // is drawn in engine coordinates goes in here; the UI stays in screen space.
     this.world = this.add.container(0, 0).setScale(WORLD_SCALE);
+    this.camZoom = 1; this.camX = 0; this.koSlowmo = 0;
+
+    // Oscillator SFX (no assets needed). Unlock on the first input.
+    this.audio = new AudioManager(this);
+    this.input.once('pointerdown', () => this.audio.unlock());
+    this.input.keyboard?.once('keydown', () => this.audio.unlock());
+
+    // Super darken veil: sits ABOVE the world, below the UI (created right after
+    // the world so the display list keeps that order).
+    this.veil = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000010, 0.5)
+      .setVisible(false);
 
     // ground line (logical coords; the world container scales it to the screen)
     const ground = this.add.graphics();
@@ -689,7 +712,10 @@ export class TrainingScene extends Phaser.Scene {
       this.pollStick();
       this.latchPresses();
 
-      this.accumulator += Math.min(delta, 100); // clamp huge frame gaps
+      // KO slow motion: time crawls for a beat on the knockout blow.
+      let dt = Math.min(delta, 100);
+      if (this.koSlowmo > 0) { this.koSlowmo--; dt *= 0.35; }
+      this.accumulator += dt;
       let firstSub = true;
       while (this.accumulator >= FIXED_DT) {
         this.accumulator -= FIXED_DT;
@@ -729,20 +755,55 @@ export class TrainingScene extends Phaser.Scene {
    * sparkle on a landed Perfect Shift. Presentation only. */
   private consumeHits() {
     const cam = this.cameras.main;
+    if (this.mechCd > 0) this.mechCd--;
     for (const h of this.engine.lastHits) {
       const cx = h.projectile ? h.defender.x : (h.attacker.x + h.defender.x) / 2;
       const cy = LOGICAL_GROUND_Y - 26;
-      if (h.teched) { this.spawnBurst(cx, LOGICAL_GROUND_Y - 24, 0x99ddff, 8, 1.4); cam.shake(90, 0.004); continue; }
-      if (h.thrown) { this.spawnBurst(cx, LOGICAL_GROUND_Y - 20, 0xffcc66, 14, 2.2); cam.shake(160, 0.010); continue; }
-      if (h.blocked) { this.spawnBurst(cx, cy, 0x66ccff, 7, 1.2); cam.shake(70, 0.003); continue; }
+      if (h.teched) { this.spawnBurst(cx, LOGICAL_GROUND_Y - 24, 0x99ddff, 8, 1.4); cam.shake(90, 0.004); this.audio.playSe('guard'); continue; }
+      if (h.thrown) {
+        // the GRAB moment: a light clamp beat - the big payoff (shake/burst/sound)
+        // comes on the slam, detected below via slamFx.
+        this.audio.playSe('throw');
+        this.spawnMech(cx, 'clamp', h.attacker.facing);
+        continue;
+      }
+      if (h.blocked) { this.spawnBurst(cx, cy, 0x66ccff, 7, 1.2); cam.shake(70, 0.003); this.audio.playSe('guard'); continue; }
       const heavy = h.damage >= 70 || h.guardBreak;
       this.spawnBurst(cx, cy, h.guardBreak ? 0xffee66 : 0xffffff, heavy ? 18 : 11, heavy ? 2.6 : 1.8);
       cam.shake(heavy ? 170 : 100, heavy ? 0.011 : 0.006);
+      this.audio.playSe(heavy ? 'hit_strong' : 'hit_weak');
+      this.shakeVictim = h.defender; // jitters in place during hitstop
+      // Mechanism wireframe (spec §2.1-B): the link mechanism inside the arm,
+      // shown at the moment of impact - jabs = slider-crank, heavies = lever-crank.
+      const mv = h.attacker.move ?? '';
+      if (!h.projectile) {
+        if (mv.includes('Light')) this.spawnMech(cx, 'slider-crank', h.attacker.facing);
+        else if (mv.includes('Heavy')) this.spawnMech(cx, 'lever-crank', h.attacker.facing);
+      }
       if (h.damage >= 150) cam.flash(120, 255, 255, 255, false);
     }
-    // KO flash (once per knockout)
+    // Throw SLAM (the impact frame of the throw cinematic): the real payoff.
+    for (const f of [this.engine.p1, this.engine.p2]) {
+      if (f.slamFx) {
+        f.slamFx = false;
+        this.spawnBurst(f.x, LOGICAL_GROUND_Y - 8, 0xffcc66, 20, 2.8);
+        this.spawnBurst(f.x, LOGICAL_GROUND_Y - 4, 0xbbbbbb, 10, 1.6); // dust
+        cam.shake(220, 0.014);
+        this.audio.playSe('hit_strong');
+      }
+    }
+    // gear-shift rev (either side)
+    const gearsNow: [number, number] = [this.engine.p1.gear, this.engine.p2.gear];
+    if (gearsNow[0] !== this.prevGears[0] || gearsNow[1] !== this.prevGears[1]) this.audio.playSe('shift');
+    this.prevGears = gearsNow;
+    // KO flash (once per knockout) + slow-mo
     const someoneDead = this.engine.p1.dead || this.engine.p2.dead;
-    if (someoneDead && !this.koFlashed) { this.koFlashed = true; cam.flash(220, 255, 255, 255, false); cam.shake(300, 0.014); }
+    if (someoneDead && !this.koFlashed) {
+      this.koFlashed = true;
+      cam.flash(220, 255, 255, 255, false); cam.shake(300, 0.014);
+      this.audio.playSe('ko');
+      this.koSlowmo = 55;
+    }
     if (!someoneDead) this.koFlashed = false;
     // Perfect Shift sparkle (rising edge of perfectShiftFx)
     const fs = [this.engine.p1, this.engine.p2] as const;
@@ -750,17 +811,27 @@ export class TrainingScene extends Phaser.Scene {
       if (fs[i].perfectShiftFx > 0 && this.prevPerf[i] === 0) {
         this.spawnBurst(fs[i].x, LOGICAL_GROUND_Y - 30, 0x7affc8, 12, 2.0);
         cam.flash(90, 40, 255, 160, false);
+        this.audio.playSe('perfect');
       }
       this.prevPerf[i] = fs[i].perfectShiftFx;
-      // ギアマックス activation (rising edge of the super move): gold flash + burst + callout
+      // super activation (rising edge): darken veil + gold flash + burst + callout
       if (fs[i].move === 'super' && this.prevMove[i] !== 'super') {
         cam.flash(200, 255, 225, 90, false);
         cam.shake(160, 0.008);
         this.spawnBurst(fs[i].x, LOGICAL_GROUND_Y - 28, 0xffe14a, 22, 2.6);
         this.superShown = 40;
+        this.audio.playSe('super');
       }
       this.prevMove[i] = fs[i].move;
     }
+  }
+
+  /** Spawn the link-mechanism wireframe (§2.1-B) at the impact point, inside the
+   * scaled world layer. Cadence-limited so multi-hit strings don't spam it. */
+  private spawnMech(cx: number, type: 'slider-crank' | 'lever-crank' | 'clamp', facing: 1 | -1) {
+    if (this.mechCd > 0) return;
+    this.mechCd = 22;
+    spawnMechanismOverlay(this, cx, LOGICAL_GROUND_Y - 44, type, facing, this.world);
   }
 
   /** Radial spark burst: `count` shards flung out from (x,y), fading + falling. */
@@ -1147,6 +1218,7 @@ export class TrainingScene extends Phaser.Scene {
     this.drawHealth();
     this.drawGearPanel();
     this.updateShifter();
+    this.updateCamera();
     // the raw state read-out is a lab tool - only show it with the box overlay.
     this.hudP1.setVisible(this.showBoxes);
     this.hudP2.setVisible(this.showBoxes);
@@ -1156,6 +1228,30 @@ export class TrainingScene extends Phaser.Scene {
     }
     this.drawMatchHud();
     this.drawPerfectShift();
+  }
+
+  /** Dynamic camera: the world layer eases its zoom/pan so close-quarters fights
+   * pull in slightly (SF-style) and the view recenters on the fighters. Vertical
+   * anchor stays on the ground line; the UI is outside the world so it never moves. */
+  private updateCamera() {
+    const p1 = this.engine.p1, p2 = this.engine.p2;
+    const mid = (p1.x + p2.x) / 2;
+    const dist = Math.abs(p1.x - p2.x);
+    // close = zoom in up to +12%; far = neutral. KO holds a tighter push-in.
+    let target = dist < 90 ? 1.12 : dist < 160 ? 1.06 : 1.0;
+    if (this.koSlowmo > 0) target = 1.16;
+    this.camZoom += (target - this.camZoom) * 0.06;
+    const s = WORLD_SCALE * this.camZoom;
+    // keep the ground line fixed; recenter on the fighters, clamped to the stage.
+    const minX = GAME_WIDTH - LOGICAL_WORLD_W * s;
+    const desired = Phaser.Math.Clamp(GAME_WIDTH / 2 - mid * s, minX, 0);
+    this.camX += (desired - this.camX) * 0.1;
+    this.world.setScale(s);
+    // world.y such that the ground stays where it is at neutral zoom:
+    // world.y + LOGICAL_GROUND_Y*s = LOGICAL_GROUND_Y*WORLD_SCALE
+    this.world.setPosition(this.camX, LOGICAL_GROUND_Y * (WORLD_SCALE - s));
+    // super darken veil (first beat of the callout)
+    this.veil?.setVisible(this.superShown > 26);
   }
 
   /** Flash "PERFECT SHIFT!" when either fighter lands a double-clutch. The engine
@@ -1226,7 +1322,7 @@ export class TrainingScene extends Phaser.Scene {
       case 'jumpsquat': case 'air': return 'jump';
       case 'block': return 'block';
       case 'hitstun': case 'blockstun': return 'hitstun';
-      case 'launched': return 'hitstun';
+      case 'launched': case 'thrown': return 'hitstun';
       case 'knockdown': return 'knockdown';
       case 'dizzy': return 'dizzy';
       default: return 'idle';
@@ -1256,7 +1352,10 @@ export class TrainingScene extends Phaser.Scene {
 
   private drawFighter(f: CombatFighter, capsuleColor: number, slot = 0) {
     const push = f.getPushbox();
-    const cx = (push.xmin + push.xmax) / 2;
+    let cx = (push.xmin + push.xmax) / 2;
+    // Hitstop jitter: the fighter who just got hit vibrates in place while time is
+    // frozen - the classic "the blow is sinking in" impact tell.
+    if (this.engine.hitstop > 0 && f === this.shakeVictim) cx += (this.engine.hitstop % 2 === 0 ? 1 : -1) * 1.2;
     const fw = push.xmax - push.xmin;
     const feetY = LOGICAL_GROUND_Y - push.ymin; // logical y of feet (up = -y); world layer scales it
     const figH = push.ymax - push.ymin;

@@ -101,12 +101,14 @@ export function spawnMechanismOverlay(
   y: number,
   type: MechanismType,
   facing: 1 | -1,
+  parent?: Phaser.GameObjects.Container,
 ) {
   const g = scene.add.graphics();
   g.setPosition(x, y);
   g.setScale(facing, 1);
   g.setDepth(60);
   g.setAlpha(0);
+  if (parent) parent.add(g); // e.g. the scaled world layer of the new engine
 
   const state = { t: 0 };
 

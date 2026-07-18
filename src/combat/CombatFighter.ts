@@ -35,7 +35,7 @@ export const COMBAT_GEARS: Record<number, GearSpec> = {
 export type FighterPhase =
   | 'idle' | 'walk' | 'crouch' | 'jumpsquat' | 'air'
   | 'attack' | 'airattack' | 'block' | 'crouchblock'
-  | 'hitstun' | 'blockstun' | 'launched' | 'knockdown' | 'dizzy';
+  | 'hitstun' | 'blockstun' | 'launched' | 'thrown' | 'knockdown' | 'dizzy';
 
 /** A projectile the engine should spawn (returned from CombatFighter). */
 export interface ProjectileSpawn {
@@ -101,6 +101,14 @@ const CHARGE_GRACE = 11;
 const CHARGE_CAP = CHARGE_MIN + CHARGE_GRACE;
 const MASH_THRESHOLD = 5;      // rapid button presses to trigger a mash special
 const MASH_DECAY = 1;          // mash meter bled off per frame
+// Throw cinematic (the SF-style "間"): grab -> a held beat -> the victim is swung
+// up in an arc -> SLAMMED into the ground (damage lands HERE) -> a small bounce
+// into knockdown. Numbers are frames of the victim's scripted 'thrown' sequence.
+const THROW_HOLD = 10;         // grabbed-and-held beat before the swing
+const THROW_ARC = 14;          // frames of the airborne arc
+const THROW_ARC_H = 30;        // peak height of the arc (px)
+const THROW_ARC_DX = 2.6;      // horizontal carry per arc frame
+const THROW_BOUNCE_VY = 2.6;   // pop off the ground on impact
 // Slot order for resolving specials (strongest first). Each character defines what
 // move (and MOTION) lives in each slot; the touch shortcut / AI trigger by slot id.
 const SPECIAL_SLOTS = ['super', 'dpunch', 'fireball'] as const;
@@ -208,6 +216,11 @@ export class CombatFighter {
   private mashMeter = 0;
   assist = false;
   private oppX = 0; // last opponent x (for teleport repositioning)
+  // throw-victim scripted sequence state
+  private thrownDir: 1 | -1 = 1;
+  private thrownDmg = 0;
+  /** one-frame flag: the throw just SLAMMED this fighter into the ground (FX hook). */
+  slamFx = false;
 
   readonly def: CharacterDef;
 
@@ -275,7 +288,7 @@ export class CombatFighter {
     const canTurn = this.phase !== 'attack' && this.phase !== 'airattack' &&
       this.phase !== 'jumpsquat' && this.phase !== 'hitstun' &&
       this.phase !== 'blockstun' && this.phase !== 'launched' &&
-      this.phase !== 'knockdown' && this.phase !== 'dizzy';
+      this.phase !== 'thrown' && this.phase !== 'knockdown' && this.phase !== 'dizzy';
     if (canTurn) this.facing = opponentX >= this.x ? 1 : -1;
 
     // Perfect Shift (double-clutch): a second gear tap inside the window that
@@ -353,6 +366,9 @@ export class CombatFighter {
         break;
       case 'launched':
         this.stepLaunched();
+        break;
+      case 'thrown':
+        this.stepThrown();
         break;
       case 'knockdown':
         this.stepKnockdown();
@@ -663,6 +679,34 @@ export class CombatFighter {
     this.vx *= 0.98; // slight air drag so the carry eases out
   }
 
+  /** Throw victim's scripted sequence: held for a beat, swung up in an arc, then
+   * SLAMMED down - damage lands on the impact frame, followed by a small bounce
+   * into knockdown. This is the "間" a throw needs to feel like a throw. */
+  private stepThrown() {
+    const f = this.phaseFrame;
+    if (f < THROW_HOLD) {
+      // grabbed: hoisted slightly, no control
+      this.y = (f / THROW_HOLD) * 7;
+      return;
+    }
+    const u = (f - THROW_HOLD) / THROW_ARC; // 0..1 across the arc
+    if (u < 1) {
+      this.x += this.thrownDir * THROW_ARC_DX;
+      this.y = 7 + Math.sin(u * Math.PI) * THROW_ARC_H * (1 - u * 0.25); // arc that falls harder than it rises
+      return;
+    }
+    // IMPACT: the slam. Damage lands here (not at the grab), then bounce into knockdown.
+    this.y = 0;
+    this.health = Math.max(0, this.health - this.thrownDmg);
+    this.slamFx = true;
+    this.vy = THROW_BOUNCE_VY;
+    this.stunFrames = KNOCKDOWN_FRAMES + 6;
+    this.phase = 'knockdown';
+    this.phaseFrame = 0;
+    this.pendingDizzy = false;
+    this.pendingReversal = null;
+  }
+
   /** Touchdown from a launch -> a short grounded knockdown (with the usual wakeup
    * i-frames). The airtime already gave the attacker their okizeme window. */
   private enterKnockdownFromLaunch() {
@@ -786,6 +830,7 @@ export class CombatFighter {
   }
 
   private applyGravity() {
+    if (this.phase === 'thrown') return; // the throw sequence scripts y directly
     if (!this.isGrounded() || this.vy > 0) {
       this.vy -= GRAVITY;
       this.y += this.vy;
@@ -889,14 +934,15 @@ export class CombatFighter {
     return this.phase === 'attack' && !!this.move && !!this.def.moves[this.move].grab;
   }
 
-  /** Apply a completed throw to this fighter (the victim). */
-  applyThrown(damage: number, attackerFacing: 1 | -1) {
-    this.health = Math.max(0, this.health - damage);
+  /** Start the throw-victim cinematic (held -> arc -> slam). Damage is stored and
+   * applied on the SLAM frame (stepThrown), not at the grab - that's the "間". */
+  beginThrown(damage: number, attackerFacing: 1 | -1) {
     this.move = null;
     this.moveHasHit = false;
-    this.x += attackerFacing * 8; // tossed away
-    this.stunFrames = KNOCKDOWN_FRAMES;
-    this.phase = 'knockdown';
+    this.thrownDir = attackerFacing;
+    this.thrownDmg = damage;
+    this.vx = 0; this.vy = 0;
+    this.phase = 'thrown';
     this.phaseFrame = 0;
     this.pendingReversal = null;
   }
@@ -935,7 +981,7 @@ export class CombatFighter {
   }
 
   getHurtboxesWorld(): WorldBox[] {
-    if (this.phase === 'knockdown') return [];
+    if (this.phase === 'knockdown' || this.phase === 'thrown') return [];
     if (this.move) {
       const m = this.def.moves[this.move];
       if (m.hurtboxes) return m.hurtboxes.map((b) => this.toWorld(b));

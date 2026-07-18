@@ -111,7 +111,7 @@ export class CombatEngine {
       return;
     }
     const dmg = hit.damage; // throws deal fixed damage (not gear-scaled)
-    defender.applyThrown(dmg, attacker.facing);
+    defender.beginThrown(dmg, attacker.facing); // cinematic: damage lands on the slam
     this.hitstop = hit.hitstop;
     attacker.addMeter(6);
     this.lastHits.push({ attacker, defender, blocked: false, damage: dmg, guardBreak: false, thrown: true });

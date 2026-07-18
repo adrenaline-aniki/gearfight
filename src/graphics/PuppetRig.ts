@@ -51,6 +51,12 @@ export class PuppetRig {
   private style: RigStyle;
   private walkT = 0;
   private clock = 0;
+  // Smoothed pose state: joints ease toward each frame's target instead of
+  // snapping, so state changes read as MOTION (a fall tips over, a flinch whips
+  // back then settles) rather than instant pose swaps.
+  private smAngles: Record<string, number> = {};
+  private smDx = 0; private smDy = 0; private smSquash = 1; private smRot = 0;
+  private needSnap = true; // snap (no easing) on first sync / after being hidden
 
   constructor(scene: Phaser.Scene, data: RigData, texPrefix: string, depth = 0, style: RigStyle = {}) {
     this.ch = data.canvas[1];
@@ -78,7 +84,10 @@ export class PuppetRig {
     for (const ch of bone.children ?? []) this.build(scene, ch, c, [px, py], pre);
   }
 
-  setVisible(v: boolean) { this.root.setVisible(v); }
+  setVisible(v: boolean) {
+    if (!v && this.root.visible) this.needSnap = true; // don't ease across a hide/swap
+    this.root.setVisible(v);
+  }
   destroy() { this.root.destroy(); }
   /** Move this rig's display object into a parent container (e.g. a scaled world
    * layer) so it renders in that layer's transform. */
@@ -89,17 +98,38 @@ export class PuppetRig {
     this.clock += 1;
     const s = displayH / this.ch;
     const pose = this.poseFor(f);
-    const sq = pose.squashY ?? 1;
-    const rot = (pose.rot ?? 0) * facing; // whole-body tilt (e.g. knockdown), pivots at the feet
-    const sx = s * facing, sy = s * sq;
-    this.root.setRotation(rot);
+
+    // Ease every pose channel toward its target. Fast for combat reactions
+    // (attacks stay crisp, hits whip), slower for neutral - and knockdowns get a
+    // real animated tip-over instead of an instant floor pose.
+    const combat = f.phase === 'attack' || f.phase === 'airattack' ||
+      f.phase === 'hitstun' || f.phase === 'blockstun' || f.phase === 'thrown';
+    const k = this.needSnap ? 1 : combat ? 0.55 : 0.3;
+    this.needSnap = false;
+    const tgSq = pose.squashY ?? 1;
+    const tgRot = (pose.rot ?? 0) * facing;
+    const tgDx = pose.dx ?? 0;
+    const tgDy = pose.dy ?? 0;
+    this.smSquash += (tgSq - this.smSquash) * k;
+    this.smRot += (tgRot - this.smRot) * k;
+    this.smDx += (tgDx - this.smDx) * k;
+    this.smDy += (tgDy - this.smDy) * k;
+
+    const sx = s * facing, sy = s * this.smSquash;
+    this.root.setRotation(this.smRot);
     this.root.setScale(sx, sy);
     // place so the foot anchor (+ global dx/dy) lands at (fx, feetY) after rotation
-    const ax = (this.footX - (pose.dx ?? 0)) * sx;
-    const ay = (this.footY - (pose.dy ?? 0)) * sy;
-    const cos = Math.cos(rot), sin = Math.sin(rot);
+    const ax = (this.footX - this.smDx) * sx;
+    const ay = (this.footY - this.smDy) * sy;
+    const cos = Math.cos(this.smRot), sin = Math.sin(this.smRot);
     this.root.setPosition(fx - (cos * ax - sin * ay), feetY - (sin * ax + cos * ay));
-    for (const name in this.nodes) this.nodes[name].rotation = pose.angles[name] ?? 0;
+    for (const name in this.nodes) {
+      const tg = pose.angles[name] ?? 0;
+      const cur = this.smAngles[name] ?? tg;
+      const next = cur + (tg - cur) * k;
+      this.smAngles[name] = next;
+      this.nodes[name].rotation = next;
+    }
   }
 
   // ---- posing --------------------------------------------------------------
@@ -201,6 +231,15 @@ export class PuppetRig {
         A.head = -0.5; A.torso = -0.12; A.armR = 0.55; A.armRFore = -0.4;
         A.armL = 0.5; A.legR = -0.18; A.legRShin = 0.35;
         return { angles: A, dx: -14 };
+      }
+      case 'thrown': {
+        // grabbed then swung: held stiff at first, then flailing and tipping
+        // backward through the arc (the smoothing turns this into a real tumble).
+        const fl = Math.min(1, f.phaseFrame / 12);
+        A.head = 0.35 * fl; A.torso = -0.2 * fl;
+        A.armR = 0.9 * fl; A.armL = 0.75 * fl;
+        A.legR = -0.3 * fl; A.legRShin = 0.5 * fl; A.legL = 0.3 * fl; A.legLShin = 0.45 * fl;
+        return { angles: A, rot: -1.15 * fl, dx: -3 };
       }
       case 'launched': {
         // airborne tumble after a launching hit: back arched, limbs flailing, the
