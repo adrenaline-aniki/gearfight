@@ -133,6 +133,7 @@ export class TrainingScene extends Phaser.Scene {
   private mechCd = 0;          // frames until the next mechanism overlay may spawn
   private shakeVictim: CombatFighter | null = null;
   private prevGears: [number, number] = [1, 1];
+  private prevOverheats: [boolean, boolean] = [false, false];
 
   // match system: best-of-3 rounds, 60s timer, KO / time-over judgement.
   private p1def!: CharacterDef;
@@ -792,10 +793,24 @@ export class TrainingScene extends Phaser.Scene {
         this.audio.playSe('hit_strong');
       }
     }
-    // gear-shift rev (either side)
-    const gearsNow: [number, number] = [this.engine.p1.gear, this.engine.p2.gear];
-    if (gearsNow[0] !== this.prevGears[0] || gearsNow[1] !== this.prevGears[1]) this.audio.playSe('shift');
-    this.prevGears = gearsNow;
+    // gear shifts: rev sound + a floating popup showing THE number that changed
+    // (up = attack mul, down = speed mul). Overheat gets its own red callout.
+    const both = [this.engine.p1, this.engine.p2] as const;
+    for (let i = 0; i < 2; i++) {
+      const f = both[i];
+      if (f.overheated && !this.prevOverheats[i]) {
+        this.spawnShiftPopup(f, 'オーバーヒート！！', '#ff5533');
+        this.audio.playSe('ko');
+      } else if (f.gear !== this.prevGears[i]) {
+        const up = f.gear > this.prevGears[i];
+        this.spawnShiftPopup(f,
+          up ? `GL${f.gear} 攻撃×${f.gearSpec.damageMul}` : `GL${f.gear} 速度×${f.gearSpec.walkMul}`,
+          up ? '#ffb066' : '#7affc8');
+        this.audio.playSe('shift');
+      }
+      this.prevGears[i] = f.gear;
+      this.prevOverheats[i] = f.overheated;
+    }
     // KO flash (once per knockout) + slow-mo
     const someoneDead = this.engine.p1.dead || this.engine.p2.dead;
     if (someoneDead && !this.koFlashed) {
@@ -824,6 +839,16 @@ export class TrainingScene extends Phaser.Scene {
       }
       this.prevMove[i] = fs[i].move;
     }
+  }
+
+  /** Floating shift callout above a fighter (world layer): rises and fades. */
+  private spawnShiftPopup(f: CombatFighter, label: string, color: string) {
+    const t = this.add.text(f.x, LOGICAL_GROUND_Y - (f.def.displayHeight ?? 54) - 8, label, {
+      fontFamily: PIXEL_FONT, fontSize: '10px', color, fontStyle: 'bold',
+      stroke: '#101820', strokeThickness: 3,
+    }).setOrigin(0.5, 1).setResolution(2);
+    this.world.add(t);
+    this.tweens.add({ targets: t, y: t.y - 16, alpha: 0, duration: 750, ease: 'Cubic.Out', onComplete: () => t.destroy() });
   }
 
   /** Spawn the link-mechanism wireframe (§2.1-B) at the impact point, inside the
@@ -1374,6 +1399,10 @@ export class TrainingScene extends Phaser.Scene {
       // Uses the def's standing size, NOT figH - figH shrinks when crouching, which
       // would wrongly shrink the character; the crouch is a POSE, not a smaller body.
       rig.sync(f, cx, feetY, f.def.displayHeight ?? 54, f.facing);
+      // HEAT reads on the machine itself: it reddens as the drivetrain heats, and
+      // pulses deep red while overheated - no gauge reading required.
+      rig.setTint(this.heatTint(f));
+      this.drawGearFx(f, cx, feetY);
       if (f.phase === 'dizzy') this.drawDizzyStars(cx, feetY - 60);
       this.drawBoxes(f, push);
       return;
@@ -1472,6 +1501,44 @@ export class TrainingScene extends Phaser.Scene {
     }
 
     this.drawBoxes(f, push);
+  }
+
+  /** The machine's heat as a tint: white (cool) reddening from ~25% heat, and a
+   * pulsing deep red while overheated. */
+  private heatTint(f: CombatFighter): number {
+    if (f.overheated) {
+      const p = (Math.sin(this.time.now / 70) + 1) / 2;
+      const gb = 0x33 + Math.round(0x44 * p);
+      return (0xff << 16) | (gb << 8) | gb;
+    }
+    const t = Math.min(1, f.heat / 100);
+    if (t <= 0.25) return 0xffffff;
+    const gb = 255 - Math.round(150 * ((t - 0.25) / 0.75));
+    return (0xff << 16) | (gb << 8) | gb;
+  }
+
+  /** Per-gear body language FX + the perfect-shift timing ring, drawn in the
+   * world overlay: low gear walks leave speed lines, high gear walks kick dust,
+   * and right after a shift a ring shrinks onto the fighter - press again as it
+   * closes for the perfect shift. */
+  private drawGearFx(f: CombatFighter, cx: number, feetY: number) {
+    const g = this.gfx;
+    // perfect-shift window: a ring shrinking onto a fixed target ring
+    if (f.clutchOpen > 0) {
+      g.lineStyle(1, 0x7affc8, 0.5); g.strokeCircle(cx, feetY - 3, 5);
+      g.lineStyle(1.5, 0x7affc8, 0.95); g.strokeCircle(cx, feetY - 3, 5 + f.clutchOpen * 2.6);
+    }
+    if (f.phase !== 'walk') return;
+    if (f.gear <= 2 && Math.abs(f.vx) >= 1.2) {
+      // low gear: speed lines trailing the run
+      const dir = Math.sign(f.vx);
+      g.lineStyle(1, 0xbfe8ff, 0.30);
+      g.lineBetween(cx - dir * 10, feetY - 10, cx - dir * 20, feetY - 10);
+      g.lineBetween(cx - dir * 14, feetY - 22, cx - dir * 26, feetY - 22);
+    } else if (f.gear >= 4 && this.engine.frame % 11 === 0) {
+      // high gear: heavy steps kick up dust
+      this.spawnBurst(cx - Math.sign(f.vx) * 6, feetY - 2, 0x8a8a8a, 2, 0.7);
+    }
   }
 
   /** Orbiting stars over a dizzied fighter's head (rig path skips the mech's
@@ -1591,6 +1658,13 @@ export class TrainingScene extends Phaser.Scene {
       g.lineStyle(1, col, lit ? 1 : 0.4); g.strokeRect(x, y0, segW, segH);
     }
 
+    // The static coach text is a LEARNING aid: show it in training/tutorial, but
+    // keep matches clean - there the shift popups + heat glow carry the info.
+    if (this.cfg.mode === 'versus' || this.cfg.mode === 'arcade') {
+      this.gearLabelText.setText('');
+      this.gearCoachText.setText('');
+      return;
+    }
     // current gear's trade-off, in plain numbers.
     const spec = f.gearSpec;
     const label = f.overheated

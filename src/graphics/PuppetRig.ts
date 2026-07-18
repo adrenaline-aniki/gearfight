@@ -45,6 +45,8 @@ const BONES: Bone[] = [
 export class PuppetRig {
   private root: Phaser.GameObjects.Container;
   private nodes: Record<string, Phaser.GameObjects.Container> = {};
+  private imgs: Phaser.GameObjects.Image[] = [];
+  private curTint = -1;
   private ch: number;
   private footX: number; private footY: number;
   private pivotByPart: Record<string, [number, number]> = {};
@@ -79,6 +81,7 @@ export class PuppetRig {
     const c = scene.add.container(px - parentPivot[0], py - parentPivot[1]);
     const img = scene.add.image(-px, -py, `${pre}${bone.part}`).setOrigin(0, 0);
     c.add(img);
+    this.imgs.push(img);
     parent.add(c);
     this.nodes[bone.name] = c;
     for (const ch of bone.children ?? []) this.build(scene, ch, c, [px, py], pre);
@@ -92,6 +95,16 @@ export class PuppetRig {
   /** Move this rig's display object into a parent container (e.g. a scaled world
    * layer) so it renders in that layer's transform. */
   setParent(container: Phaser.GameObjects.Container) { container.add(this.root); }
+
+  /** Tint every part (0xffffff = none). Used for the heat glow: the machine
+   * visibly reddens as the drivetrain heats toward overheat. */
+  setTint(color: number) {
+    if (color === this.curTint) return;
+    this.curTint = color;
+    for (const img of this.imgs) {
+      if (color === 0xffffff) img.clearTint(); else img.setTint(color);
+    }
+  }
 
   sync(f: CombatFighter, fx: number, feetY: number, displayH: number, facing: 1 | -1) {
     this.root.setVisible(true);

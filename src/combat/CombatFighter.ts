@@ -486,6 +486,12 @@ export class CombatFighter {
     return this.overheatTimer > 0;
   }
 
+  /** Frames left in the perfect-shift (double-clutch) window - >0 right after a
+   * shift. Exposed so the renderer can SHOW the timing (a shrinking ring). */
+  get clutchOpen(): number {
+    return this.clutchTimer;
+  }
+
   private canShift(): boolean {
     return this.phase === 'idle' || this.phase === 'walk' ||
            this.phase === 'crouch' || this.phase === 'block' || this.phase === 'crouchblock';
