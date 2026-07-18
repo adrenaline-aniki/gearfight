@@ -455,11 +455,12 @@ export class CombatFighter {
   }
 
   /** Assist (Smash-style): the special button + a direction selects the slot.
-   *  ↓ = super, ↑ = the rising/2nd special, neutral/side = the main special. */
+   *  ↓ = super, FORWARD = the rising/2nd special (side-B - up would fight the
+   *  stick-up-jumps rule), neutral/back = the main special. */
   private assistPicks(id: string, input: CommandInput): boolean {
     if (id === 'super') return input.vert < 0;
-    if (id === 'dpunch') return input.vert > 0;
-    return input.vert === 0; // fireball slot
+    if (id === 'dpunch') return input.fwd > 0 && input.vert >= 0;
+    return input.fwd <= 0 && input.vert >= 0; // fireball slot
   }
 
   /** Touch shortcut entry point: queue a special to fire when next actionable. */

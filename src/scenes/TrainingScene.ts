@@ -364,7 +364,7 @@ export class TrainingScene extends Phaser.Scene {
     }).setOrigin(0.5).setResolution(2).setDepth(62).setVisible(false);
 
     this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 10,
-      'スティック=移動/ジャンプ/しゃがみ ｜ 弱 強 投 ｜ 必殺(↑=昇竜/↓=超必) ｜ 右端G＋G−=ギア',
+      'スティック=移動/ジャンプ/しゃがみ ｜ 弱 強 投 ｜ 必殺(→=昇竜/↓=超必) ｜ 左端G＋G−=ギア',
       { fontFamily: PIXEL_FONT, fontSize: '10px', color: '#556677' }).setOrigin(0.5, 1).setResolution(2);
 
     this.setupKeyboard();
@@ -482,7 +482,10 @@ export class TrainingScene extends Phaser.Scene {
     press(GAME_WIDTH - 74, GAME_HEIGHT - 26, 14, '強', 0xff8866, () => { this.touchPress.heavy = true; });
     press(GAME_WIDTH - 112, GAME_HEIGHT - 40, 12, '投', 0xaa88ff, () => { this.touchPress.throw = true; });
     press(GAME_WIDTH - 42, GAME_HEIGHT - 80, 14, '必殺', 0xff66cc, () => {
-      const id = this.touchHold.up ? 'dpunch' : this.touchHold.down ? 'super' : 'fireball';
+      // Smash-style side-B: forward picks the rising special (up would fight the
+      // stick-up-jumps rule), down picks the super, neutral/back the projectile.
+      const fwdHeld = this.engine.p1.facing === 1 ? this.touchHold.right : this.touchHold.left;
+      const id = this.touchHold.down ? 'super' : fwdHeld ? 'dpunch' : 'fireball';
       this.engine.p1.requestSpecial(id);
     });
     // gear: the edge-docked rocker (G＋ / current GL / G−).
@@ -493,7 +496,11 @@ export class TrainingScene extends Phaser.Scene {
    * gear number between them. G＋ on top, G− below; the number reddens with heat
    * and flashes green while the perfect-shift window is open. */
   private buildGearRocker() {
-    const x0 = GAME_WIDTH - 36, w = 34, top = 84, ph = 34, mid = 16;
+    // LEFT edge, above the stick: the right thumb owns the 4 attack buttons, so
+    // shifting goes to the LEFT thumb (rolling up off the stick - and a shift
+    // locks you briefly anyway, so pausing movement is the honest trade). Also
+    // how a JP right-hand-drive car works: you shift with the left hand.
+    const x0 = 4, w = 34, top = 96, ph = 34, mid = 16;
     this.rockerGfx = this.add.graphics();
     const draw = (g: Phaser.GameObjects.Graphics) => {
       g.fillStyle(0x1b2432, 0.6); g.fillRoundedRect(x0, top, w, ph * 2 + mid, 8);
@@ -642,7 +649,9 @@ export class TrainingScene extends Phaser.Scene {
     }
     if (!cur) {
       for (const [id, t] of this.stickTouches) {
-        if (t.x < GAME_WIDTH * 0.45 && t.y > GAME_HEIGHT * 0.4) {
+        // the gear rocker owns the top-left edge strip - never claim it as stick
+        const inRocker = t.x < 44 && t.y > 90 && t.y < 186;
+        if (!inRocker && t.x < GAME_WIDTH * 0.45 && t.y > GAME_HEIGHT * 0.4) {
           this.stickTouchId = id; this.stickOriginX = t.x; this.stickOriginY = t.y; cur = t; break;
         }
       }
