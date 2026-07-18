@@ -132,6 +132,9 @@ export class TrainingScene extends Phaser.Scene {
   private shakeVictim: CombatFighter | null = null;
   private prevGears: [number, number] = [1, 1];
   private prevOverheats: [boolean, boolean] = [false, false];
+  // guard-success flashes (cyan arc in front of the blocker) + popup rate limit
+  private guardArcs: { x: number; y: number; dir: 1 | -1; life: number }[] = [];
+  private guardPopCd = 0;
 
   // match system: best-of-3 rounds, 60s timer, KO / time-over judgement.
   private p1def!: CharacterDef;
@@ -762,7 +765,17 @@ export class TrainingScene extends Phaser.Scene {
         this.spawnMech(cx, 'clamp', h.attacker.facing);
         continue;
       }
-      if (h.blocked) { this.spawnBurst(cx, cy, 0x66ccff, 7, 1.2); cam.shake(70, 0.003); this.audio.playSe('guard'); continue; }
+      if (h.blocked) {
+        // GUARD SUCCESS must be unmistakable: a cyan energy-arc flashes in front
+        // of the blocker + a burst + a rate-limited "GUARD!" callout.
+        const dir: 1 | -1 = h.attacker.x >= h.defender.x ? 1 : -1;
+        this.guardArcs.push({ x: h.defender.x + dir * 12, y: LOGICAL_GROUND_Y - 26, dir, life: 14 });
+        this.spawnBurst(cx, cy, 0x66ccff, 10, 1.6);
+        cam.shake(70, 0.003);
+        this.audio.playSe('guard');
+        if (this.guardPopCd === 0) { this.spawnShiftPopup(h.defender, 'GUARD!', '#7ad0ff'); this.guardPopCd = 40; }
+        continue;
+      }
       const heavy = h.damage >= 70 || h.guardBreak;
       this.spawnBurst(cx, cy, h.guardBreak ? 0xffee66 : 0xffffff, heavy ? 18 : 11, heavy ? 2.6 : 1.8);
       cam.shake(heavy ? 170 : 100, heavy ? 0.011 : 0.006);
@@ -862,6 +875,46 @@ export class TrainingScene extends Phaser.Scene {
       this.hitFx.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 0.6, life: max, max, color, size: 1.4 + Math.random() * 1.8, grav: 0.14 });
     }
     if (this.hitFx.length > 300) this.hitFx.splice(0, this.hitFx.length - 300);
+  }
+
+  /** Cyan energy arcs flashing in front of a successful blocker. */
+  private drawGuardArcs() {
+    const g = this.gfx;
+    const survivors: typeof this.guardArcs = [];
+    for (const a of this.guardArcs) {
+      a.life--;
+      const t = a.life / 14;
+      const r = 16 + (1 - t) * 6;
+      g.lineStyle(2.5, 0x8fe0ff, 0.85 * t);
+      g.beginPath();
+      g.arc(a.x, a.y, r, (a.dir > 0 ? -0.9 : Math.PI - 0.9), (a.dir > 0 ? 0.9 : Math.PI + 0.9), false);
+      g.strokePath();
+      g.lineStyle(1.2, 0xffffff, 0.5 * t);
+      g.beginPath();
+      g.arc(a.x, a.y, r - 4, (a.dir > 0 ? -0.7 : Math.PI - 0.7), (a.dir > 0 ? 0.7 : Math.PI + 0.7), false);
+      g.strokePath();
+      if (a.life > 0) survivors.push(a);
+    }
+    this.guardArcs = survivors;
+  }
+
+  /** White strike streak along the ACTIVE hitbox: makes the attack's reach and
+   * timing readable at a glance (the punch visibly travels to where it hits). */
+  private drawStrikeFx(f: CombatFighter) {
+    if (!f.isAttackActive() || !f.move) return;
+    const hb = f.getHitboxWorld();
+    if (!hb) return;
+    const g = this.gfx;
+    const dir = f.facing;
+    const yc = LOGICAL_GROUND_Y - (hb.ymin + hb.ymax) / 2;
+    const x0 = f.x + dir * 4;
+    const x1 = dir > 0 ? hb.xmax : hb.xmin;
+    const half = Math.min(10, (hb.ymax - hb.ymin) * 0.3);
+    g.fillStyle(0xffffff, 0.22);
+    g.fillTriangle(x0, yc - 2, x0, yc + 2, x1, yc - half);
+    g.fillTriangle(x0, yc - 2, x0, yc + 2, x1, yc + half);
+    g.lineStyle(2, 0xffffff, 0.5);
+    g.lineBetween(x0, yc, x1, yc);
   }
 
   private drawHitFx() {
@@ -1216,6 +1269,10 @@ export class TrainingScene extends Phaser.Scene {
     // Each side draws with its own character's rig (or the mech fallback).
     this.drawFighter(this.engine.p1, 0x4488ff, 0);
     this.drawFighter(this.engine.p2, 0xff8844, 1);
+    this.drawStrikeFx(this.engine.p1);
+    this.drawStrikeFx(this.engine.p2);
+    this.drawGuardArcs();
+    if (this.guardPopCd > 0) this.guardPopCd--;
 
     // hitboxes on top (red), from whichever fighter is attacking — lab overlay only
     if (this.showBoxes) {

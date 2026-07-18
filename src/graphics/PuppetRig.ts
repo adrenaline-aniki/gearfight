@@ -59,7 +59,10 @@ export class PuppetRig {
   // snapping, so state changes read as MOTION (a fall tips over, a flinch whips
   // back then settles) rather than instant pose swaps.
   private smAngles: Record<string, number> = {};
+  private smShift: Record<string, [number, number]> = {};
+  private rest: Record<string, [number, number]> = {};
   private smDx = 0; private smDy = 0; private smSquash = 1; private smRot = 0;
+  private frontKey = '';
   private needSnap = true; // snap (no easing) on first sync / after being hidden
 
   constructor(scene: Phaser.Scene, data: RigData, texPrefix: string, depth = 0, style: RigStyle = {}) {
@@ -86,6 +89,7 @@ export class PuppetRig {
     this.imgs.push(img);
     parent.add(c);
     this.nodes[bone.name] = c;
+    this.rest[bone.name] = [px - parentPivot[0], py - parentPivot[1]];
     for (const ch of bone.children ?? []) this.build(scene, ch, c, [px, py], pre);
   }
 
@@ -149,6 +153,25 @@ export class PuppetRig {
       const next = cur + (tg - cur) * k;
       this.smAngles[name] = next;
       this.nodes[name].rotation = next;
+      // per-bone translation (reference-800 units, like dx/dy). Lets a pose MOVE
+      // a part, not just rotate it - e.g. planting アイギス's shield IN FRONT of
+      // the body, which is unreachable by rotating around its back-shoulder pivot.
+      const sh = pose.shift?.[name];
+      const tsx = (sh?.[0] ?? 0) * u, tsy = (sh?.[1] ?? 0) * u;
+      const cs = this.smShift[name] ?? [tsx, tsy];
+      const nsx = cs[0] + (tsx - cs[0]) * k, nsy = cs[1] + (tsy - cs[1]) * k;
+      this.smShift[name] = [nsx, nsy];
+      const r = this.rest[name];
+      if (r) this.nodes[name].setPosition(r[0] + nsx, r[1] + nsy);
+    }
+    // pose-driven z-order: a pose can pull bones in front of everything (the
+    // planted shield must cover the head/front arm, which normally draw over
+    // armL). Restore the build order whenever the front set changes.
+    const fkey = (pose.front ?? []).join(',');
+    if (fkey !== this.frontKey) {
+      this.frontKey = fkey;
+      for (const b of BONES) this.root.bringToTop(this.nodes[b.name]);
+      for (const n of pose.front ?? []) if (this.nodes[n]) this.root.bringToTop(this.nodes[n]);
     }
   }
 
@@ -173,7 +196,10 @@ export class PuppetRig {
     return Math.abs(Math.sin(p)) * 30;
   }
 
-  private poseFor(f: CombatFighter): { angles: Record<string, number>; dx?: number; dy?: number; squashY?: number; rot?: number } {
+  private poseFor(f: CombatFighter): {
+    angles: Record<string, number>; dx?: number; dy?: number; squashY?: number; rot?: number;
+    shift?: Record<string, [number, number]>; front?: string[];
+  } {
     const A: Record<string, number> = {};
     // moving on the ground while not committed to a move = walking (either way)
     const moving = f.isGrounded() && Math.abs(f.vx) > 0.15;
@@ -185,7 +211,18 @@ export class PuppetRig {
         // real crouch: DROP the hips (dy) and FOLD the legs to keep the feet on
         // the floor - the upper body stays full-size (no shrink/"Minimize").
         A.legR = 0.45; A.legL = -0.45; A.legRShin = 1.6; A.legLShin = 1.6;
-        A.torso = 0.12; A.head = 0.1; A.armR = -0.15;
+        A.torso = 0.12; A.head = 0.1;
+        if (f.phase === 'crouchblock') {
+          // crouch GUARD is visually distinct from a plain crouch: shield planted
+          // forward for a shield bearer, a clear cross-guard for everyone else.
+          if (this.style.shieldArm) {
+            A.armL = -0.3; A.armR = -0.2;
+            return { angles: A, dy: 170, dx: 15, shift: { armL: [250, 90] }, front: ['armL'] };
+          }
+          A.armR = -1.0; A.armRFore = -0.5; A.armL = -0.5;
+          return { angles: A, dy: 170, dx: 15 };
+        }
+        A.armR = -0.15;
         return { angles: A, dy: 170 };
       }
       case 'jumpsquat': case 'air': {
@@ -194,15 +231,21 @@ export class PuppetRig {
       }
       case 'block': {
         if (this.style.shieldArm) {
-          // Shield bearer (アイギス): the SHIELD arm swings up to the front and
-          // does the blocking; the fist stays chambered, body braces behind it.
-          A.armL = -1.35; A.armR = -0.15; A.head = 0.05; A.torso = 0.08;
-          if (moving) return { angles: A, dx: 25, dy: this.stride(A, false) };
-          return { angles: A, dx: 25 };
+          // Shield bearer (アイギス): the whole shield arm SLIDES to the front of
+          // the body (per-bone shift) with only a slight tilt, so the shield stays
+          // face-on - a big upright shield WALL between アイギス and the attacker.
+          // (Rotation alone can't get it there: the armL pivot is the back
+          // shoulder and the shield sits too close to it.)
+          A.armL = -0.35; A.armR = -0.25; A.head = 0.05; A.torso = 0.1;
+          const shield: Record<string, [number, number]> = { armL: [275, 55] };
+          if (moving) { const dy = this.stride(A, false); A.armL = -0.35; return { angles: A, dx: 30, dy, shift: shield, front: ['armL'] }; }
+          return { angles: A, dx: 30, shift: shield, front: ['armL'] };
         }
-        A.armR = -0.55; A.armL = -0.2; A.head = 0.04;
+        // clear cross-guard: both arms UP in front, slight lean back - reads as
+        // "guarding" at a glance, not just standing.
+        A.armR = -1.0; A.armRFore = -0.5; A.armL = -0.5; A.head = 0.04; A.torso = -0.04;
         // retreating (holding back) is the guard-ready phase - still step the legs
-        if (moving) return { angles: A, dy: this.stride(A, false) };
+        if (moving) { const dy = this.stride(A, false); A.armR = -1.0; A.armL = -0.5; return { angles: A, dy }; }
         return { angles: A };
       }
       case 'attack': case 'airattack': {
@@ -242,22 +285,35 @@ export class PuppetRig {
           A.armR = -1.1 * t; A.armRFore = 1.0 * t; A.armL = 0.2 * t; A.head = -0.05 * t;
           return { angles: A, dx: 100 * t };
         }
-        // straight punch: swing the upper arm up to horizontal AND open the elbow
-        // (positive forearm) so the fist reaches far forward, and STEP INTO IT -
-        // the body lunge carries most of the forward read at chibi proportions.
-        A.armR = (heavy ? -1.5 : -1.3) * t;
-        A.armRFore = (heavy ? 1.5 : 1.3) * t;
+        // straight punch with ANTICIPATION: through the startup the body COILS
+        // BACK with the fist chambered, then on the active frames it EXPLODES
+        // forward - a huge windup->release delta is what makes an attack readable
+        // at chibi proportions (the arm alone is too stubby to carry it).
+        const mv = f.move ? f.def.moves[f.move] : undefined;
+        const su = mv ? Math.max(2, Math.round(mv.startup * (f.phase === 'attack' ? f.gearSpec.frameMul : 1))) : 3;
+        if (f.phaseFrame < su - 1) {
+          A.armR = 0.5; A.armRFore = -0.6; A.torso = -0.15; A.head = 0.06;
+          A.armL = this.style.bladeArm ? 0 : -0.2;
+          A.legR = -0.12;
+          return { angles: A, dx: -70 };
+        }
+        const t2 = Math.min(1, (f.phaseFrame - (su - 1)) / 2);
+        A.armR = (heavy ? -1.6 : -1.35) * t2;
+        A.armRFore = (heavy ? 1.6 : 1.35) * t2;
         // Blade characters keep the weapon arm planted during a fist punch (no
         // counter-swing = no "flapping" blade); everyone else swings it slightly.
-        A.armL = this.style.bladeArm ? 0 : 0.28 * t;
-        A.head = -0.06 * t; A.torso = (heavy ? 0.18 : 0.12) * t;
-        return { angles: A, dx: (heavy ? 200 : 150) * t };
+        A.armL = this.style.bladeArm ? 0 : 0.3 * t2;
+        A.head = -0.08 * t2; A.torso = (heavy ? 0.3 : 0.18) * t2;
+        return { angles: A, dx: (heavy ? 320 : 220) * t2 };
       }
       case 'blockstun': {
-        // a BLOCKED hit: hold the guard (shield stays up for a shield bearer)
-        // and just rock back - visually distinct from actually getting hit.
-        if (this.style.shieldArm) { A.armL = -1.35; A.armR = -0.15; A.torso = 0.1; }
-        else { A.armR = -0.55; A.armL = -0.2; A.torso = 0.06; }
+        // a BLOCKED hit: hold the guard (shield stays planted for a shield
+        // bearer) and just rock back - visually distinct from getting hit.
+        if (this.style.shieldArm) {
+          A.armL = -0.35; A.armR = -0.25; A.torso = 0.12; A.head = 0.05;
+          return { angles: A, dx: -60, shift: { armL: [275, 55] }, front: ['armL'] };
+        }
+        A.armR = -1.0; A.armRFore = -0.5; A.armL = -0.5; A.torso = 0.02;
         A.head = 0.05;
         return { angles: A, dx: -60 };
       }
