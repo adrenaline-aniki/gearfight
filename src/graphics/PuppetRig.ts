@@ -39,6 +39,10 @@ const BONES: Bone[] = [
   { name: 'legL', part: 'legL_thigh', pivot: [192, 466], children: [{ name: 'legLShin', part: 'legL_shin', pivot: [150, 588] }] },
   { name: 'legR', part: 'legR_thigh', pivot: [316, 466], children: [{ name: 'legRShin', part: 'legR_shin', pivot: [352, 588] }] },
   { name: 'torso', part: 'torso', pivot: [260, 458] },
+  // OPTIONAL bone (built only if the character ships the texture): the bare arm
+  // UNDER a carried item - e.g. アイギス's shield hand. Lets the item (armL)
+  // move freely as an overlay while a real arm stays on the body.
+  { name: 'armLU', part: 'armL_under', pivot: [135, 200] },
   { name: 'armL', part: 'armL', pivot: [168, 250] },
   { name: 'head', part: 'head', pivot: [256, 197] },
   { name: 'armR', part: 'armR_upper', pivot: [372, 258], children: [{ name: 'armRFore', part: 'armR_fore', pivot: [408, 340] }] },
@@ -82,6 +86,8 @@ export class PuppetRig {
    * then recurse into children. All part images use origin (0,0) offset by the
    * bone's own canvas pivot, so at rest the canvas maps 1:1. */
   private build(scene: Phaser.Scene, bone: Bone, parent: Phaser.GameObjects.Container, parentPivot: [number, number], pre: string) {
+    // optional bones: skip silently when this character has no such part art
+    if (!scene.textures.exists(`${pre}${bone.part}`)) return;
     const [px, py] = this.pivotOf(bone);
     const c = scene.add.container(px - parentPivot[0], py - parentPivot[1]);
     const img = scene.add.image(-px, -py, `${pre}${bone.part}`).setOrigin(0, 0);
@@ -170,7 +176,7 @@ export class PuppetRig {
     const fkey = (pose.front ?? []).join(',');
     if (fkey !== this.frontKey) {
       this.frontKey = fkey;
-      for (const b of BONES) this.root.bringToTop(this.nodes[b.name]);
+      for (const b of BONES) if (this.nodes[b.name]) this.root.bringToTop(this.nodes[b.name]);
       for (const n of pose.front ?? []) if (this.nodes[n]) this.root.bringToTop(this.nodes[n]);
     }
   }
@@ -217,9 +223,9 @@ export class PuppetRig {
           // forward for a shield bearer, a clear cross-guard for everyone else.
           if (this.style.shieldArm) {
             // crouch GUARD: shield slides forward and low, planted in front of
-            // the crouched body (hole under it is reconstructed in torso.png).
+            // the crouched body; the bare shield-hand arm follows partway.
             A.armL = -0.3; A.armR = -0.2;
-            return { angles: A, dy: 170, dx: 15, shift: { armL: [250, 90] }, front: ['armL'] };
+            return { angles: A, dy: 170, dx: 15, shift: { armL: [250, 90], armLU: [85, 35] }, front: ['armL'] };
           }
           A.armR = -1.0; A.armRFore = -0.5; A.armL = -0.5;
           return { angles: A, dy: 170, dx: 15 };
@@ -238,13 +244,13 @@ export class PuppetRig {
           // face-on - a big upright shield WALL between アイギス and the attacker.
           // (Rotation alone can't get it there: the armL pivot is the back
           // shoulder and the shield sits too close to it.)
-          // Shield bearer: the whole shield arm SLIDES to the front of the body
-          // (per-bone shift) and draws in FRONT of everything - a big upright
-          // shield WALL between アイギス and the attacker. The body region the
-          // shield vacates was reconstructed (baked shading into torso.png), so
-          // moving it no longer opens a cut-out hole.
+          // Shield bearer: the SHIELD (armL) slides forward as a free overlay -
+          // underneath it the character has a real bare arm (armL_under bone,
+          // mirrored from the fist arm), so moving the shield exposes a complete
+          // two-armed body, not a cut-out hole. The bare arm drifts partway
+          // toward the planted shield = visibly HOLDING it.
           A.armL = -0.35; A.armR = -0.25; A.head = 0.05; A.torso = 0.1;
-          const shield: Record<string, [number, number]> = { armL: [275, 55] };
+          const shield: Record<string, [number, number]> = { armL: [275, 55], armLU: [95, 12] };
           if (moving) { const dy = this.stride(A, false); A.armL = -0.35; return { angles: A, dx: 30, dy, shift: shield, front: ['armL'] }; }
           return { angles: A, dx: 30, shift: shield, front: ['armL'] };
         }
@@ -318,7 +324,7 @@ export class PuppetRig {
         // bearer) and just rock back - visually distinct from getting hit.
         if (this.style.shieldArm) {
           A.armL = -0.35; A.armR = -0.25; A.torso = 0.12; A.head = 0.05;
-          return { angles: A, dx: -60, shift: { armL: [275, 55] }, front: ['armL'] };
+          return { angles: A, dx: -60, shift: { armL: [275, 55], armLU: [95, 12] }, front: ['armL'] };
         }
         A.armR = -1.0; A.armRFore = -0.5; A.armL = -0.5; A.torso = 0.02;
         A.head = 0.05;
