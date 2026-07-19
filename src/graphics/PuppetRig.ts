@@ -216,8 +216,12 @@ export class PuppetRig {
           // crouch GUARD is visually distinct from a plain crouch: shield planted
           // forward for a shield bearer, a clear cross-guard for everyone else.
           if (this.style.shieldArm) {
-            A.armL = -0.3; A.armR = -0.2;
-            return { angles: A, dy: 170, dx: 15, shift: { armL: [250, 90] }, front: ['armL'] };
+            // crouch GUARD: the shield stays over the chest it already covers in
+            // the idle (only a small lift) so no cut-out hole opens behind it, but
+            // it tilts to square toward the attacker and draws in FRONT of the
+            // whole body - clearly hunkered behind the shield.
+            A.armL = -0.4; A.armR = -0.2;
+            return { angles: A, dy: 170, dx: 12, shift: { armL: [18, 4] }, front: ['armL'] };
           }
           A.armR = -1.0; A.armRFore = -0.5; A.armL = -0.5;
           return { angles: A, dy: 170, dx: 15 };
@@ -236,10 +240,15 @@ export class PuppetRig {
           // face-on - a big upright shield WALL between アイギス and the attacker.
           // (Rotation alone can't get it there: the armL pivot is the back
           // shoulder and the shield sits too close to it.)
-          A.armL = -0.35; A.armR = -0.25; A.head = 0.05; A.torso = 0.1;
-          const shield: Record<string, [number, number]> = { armL: [275, 55] };
-          if (moving) { const dy = this.stride(A, false); A.armL = -0.35; return { angles: A, dx: 30, dy, shift: shield, front: ['armL'] }; }
-          return { angles: A, dx: 30, shift: shield, front: ['armL'] };
+          // The shield COVERS part of the chest already in the idle drawing, so we
+          // must NOT fling it away (that exposes bare background where the torso
+          // was - the cut-out "hole"). Instead: keep it overlapping the chest
+          // (small lift only), TILT it to square toward the attacker, and draw it
+          // in FRONT of the whole body while the body braces back behind it.
+          A.armL = -0.5; A.armR = -0.25; A.head = 0.1; A.torso = 0.08;
+          const shield: Record<string, [number, number]> = { armL: [16, -14] };
+          if (moving) { const dy = this.stride(A, false); A.armL = -0.5; return { angles: A, dx: -30, dy, shift: shield, front: ['armL'] }; }
+          return { angles: A, dx: -30, shift: shield, front: ['armL'] };
         }
         // clear cross-guard: both arms UP in front, slight lean back - reads as
         // "guarding" at a glance, not just standing.
@@ -310,8 +319,8 @@ export class PuppetRig {
         // a BLOCKED hit: hold the guard (shield stays planted for a shield
         // bearer) and just rock back - visually distinct from getting hit.
         if (this.style.shieldArm) {
-          A.armL = -0.35; A.armR = -0.25; A.torso = 0.12; A.head = 0.05;
-          return { angles: A, dx: -60, shift: { armL: [275, 55] }, front: ['armL'] };
+          A.armL = -0.5; A.armR = -0.25; A.torso = 0.12; A.head = 0.1;
+          return { angles: A, dx: -60, shift: { armL: [16, -14] }, front: ['armL'] };
         }
         A.armR = -1.0; A.armRFore = -0.5; A.armL = -0.5; A.torso = 0.02;
         A.head = 0.05;
