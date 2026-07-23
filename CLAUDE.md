@@ -2,6 +2,24 @@
 
 このファイルは、別環境でこのプロジェクトを開いたときにすぐ状況を把握できるようにするための引き継ぎ資料です。詳細な機能仕様は `docs/仕様書.md`、スプライト生成の詳細は `docs/sprite_generation_prompts.md` を参照してください。
 
+## エンジン構成（重要・最初に読むこと）
+
+このリポジトリには**2系統の戦闘エンジンが並存**している。この節以外のCLAUDE.md本文は基本的に**旧エンジン**の詳細な開発ログであり、新エンジンについては言及していないので、作業対象がどちらかを最初に見極めること。
+
+| | 旧エンジン（ストーリーモード） | 新エンジン（combat rebuild） |
+|---|---|---|
+| 主なコード | `src/entities/Fighter.ts`（799行）、`src/scenes/BattleScene.ts`（468行）、`src/ai/AIController.ts`（197行） | `src/combat/`（CombatEngine.ts/CombatFighter.ts/CombatAI.ts/characterDef.ts/roster.ts/characterStore.ts/moves.ts/types.ts）、`src/graphics/PuppetRig.ts` |
+| 使用シーン | `ModeSelectScene`のストーリー各章・チュートリアル・フリー対戦・教室モード、`BattleScene.ts` | `SelectScene.ts`（キャラ選択）→`TrainingScene.ts`（1742行、実質この系統のバトルシーン本体）、`EditorScene.ts`（技/当たり判定を編集する「格ツクエディタ」） |
+| 見た目 | 16bitドット絵（AI生成→緑背景切り出し、`public/sprites/<id>/*.png`） | 現状は**幾何学プレースホルダ（箱）**。方向性は`docs/gearfriends_design.md`で「16bit縛りは撤廃、HD 2D・金属セル調」に確定済みだが未着手。手触り確定後にハジメくんから1体ずつ本番スプライトを載せる計画（同ファイル§4） |
+| AIの個性付け | `AIController.ts`：`kakashi`/`sonica`の2プロファイルのみ。カカシ以外の全キャラ（ganrock/aegis/drift/theorion/omeganova/sophislegion含む）が`sonica`ロジックを暫定流用（未解消、下記「まだのもの」参照） | `CombatAI.ts`（403行）：`AIStyle = 'turtle'\|'zone'\|'trick'\|'rush'`とキャラ別`AI_PROFILES`で個別の性格付けが実装済み |
+| 成熟度 | 機能的にかなり成熟（コンボ、超必殺技、投げ、ガード/ブロックストン、パーツ換装、会話システム等。詳細はこのファイルの本編を参照） | Phase 1。まだ戦闘の"手触り"（フレームデータ・判定・AI）を詰めている段階、スプライト無し |
+| 開発方針 | 現状シップ中・保守対象。大規模な新機能追加は基本ここではなく新エンジン側で行う想定 | **今後の開発の主軸**（ユーザー確認済み）。新機能・新キャラ性能・アートは基本こちらに実装していく |
+
+- 新エンジンの詳細なアーキテクチャ・スプライト仕様は `docs/gearfriends_design.md` を参照（キャラの動きの個性づけ、必要ポーズ一覧、HD 2D生成プロンプト雛形を収録）。
+- `docs/仕様書.md`（教科書対応の学習設計）は両エンジンに共通する上位のゲームデザイン仕様。ギア/ヒート/パーフェクトシフト等のコアコンセプトはどちらのエンジンでも踏襲する。
+- `src/types/game.ts`の`FighterId`（8体、kakashiは新エンジンのroster対象外）は両エンジンで共通。新キャラの追加はない。
+- 作業前に一言で言うと：**「ストーリーモードの見た目・会話・バグ」→旧エンジン。「新しい技・戦闘バランス・スプライト・AIの個性」→新エンジン`src/combat/`・`docs/gearfriends_design.md`。** 判断に迷ったらユーザーに確認する。
+
 ## プロジェクト概要
 
 中学技術科「機械・動力の伝達」学習用の2D対戦格闘ゲーム。`docs/仕様書.md` が元の完全仕様書だが、**以下の点で実装は仕様書と意図的に異なる**：
