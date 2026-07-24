@@ -104,8 +104,8 @@ const MASH_DECAY = 1;          // mash meter bled off per frame
 // Throw cinematic (the SF-style "間"): grab -> a held beat -> the victim is swung
 // up in an arc -> SLAMMED into the ground (damage lands HERE) -> a small bounce
 // into knockdown. Numbers are frames of the victim's scripted 'thrown' sequence.
-const THROW_HOLD = 10;         // grabbed-and-held beat before the swing
-const THROW_ARC = 14;          // frames of the airborne arc
+export const THROW_HOLD = 10;  // grabbed-and-held beat before the swing
+export const THROW_ARC = 14;   // frames of the airborne arc
 const THROW_ARC_H = 30;        // peak height of the arc (px)
 const THROW_ARC_DX = 2.6;      // horizontal carry per arc frame
 const THROW_BOUNCE_VY = 2.6;   // pop off the ground on impact

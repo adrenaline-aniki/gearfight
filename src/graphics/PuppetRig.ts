@@ -12,7 +12,7 @@
 // its upper arm). Facing is one root scaleX flip - a clean mirror.
 
 import Phaser from 'phaser';
-import type { CombatFighter } from '../combat/CombatFighter';
+import { THROW_ARC, THROW_HOLD, type CombatFighter } from '../combat/CombatFighter';
 
 export interface RigPart { name: string; pivot: [number, number]; }
 export interface RigData {
@@ -128,7 +128,8 @@ export class PuppetRig {
     // (attacks stay crisp, hits whip), slower for neutral - and knockdowns get a
     // real animated tip-over instead of an instant floor pose.
     const combat = f.phase === 'attack' || f.phase === 'airattack' ||
-      f.phase === 'hitstun' || f.phase === 'blockstun' || f.phase === 'thrown';
+      f.phase === 'hitstun' || f.phase === 'blockstun' || f.phase === 'thrown' ||
+      f.phase === 'knockdown';
     const k = this.needSnap ? 1 : combat ? 0.55 : 0.3;
     this.needSnap = false;
     const tgSq = pose.squashY ?? 1;
@@ -276,9 +277,20 @@ export class PuppetRig {
           A.armR = -2.1 * t; A.armRFore = 0.5 * t; A.legR = -0.3 * t; A.legRShin = 0.6 * t;
           return { angles: A, dy: -60 * t };
         }
-        if (f.move === 'throw') {                            // grab: both arms clutch forward
-          A.armR = -0.95 * t; A.armRFore = 0.85 * t; A.armL = 0.7 * t; A.head = 0.05 * t;
-          return { angles: A, dx: 70 * t };
+        if (f.move === 'throw') {                            // grab: reach in, THEN clutch and heave
+          const mvT = f.move ? f.def.moves[f.move] : undefined;
+          const suT = mvT ? Math.max(2, Math.round(mvT.startup * (f.phase === 'attack' ? f.gearSpec.frameMul : 1))) : 3;
+          if (f.phaseFrame < suT) {
+            // reach: torso leans in and arms open to grab, same "windup before the
+            // hit" language as a punch so the grab doesn't just snap into existence.
+            const rt = f.phaseFrame / Math.max(1, suT - 1);
+            A.armR = -0.3 * rt; A.armRFore = -0.15 * rt; A.armL = -0.2 * rt;
+            A.torso = 0.12 * rt; A.head = -0.05 * rt; A.legR = -0.1 * rt;
+            return { angles: A, dx: 20 * rt };
+          }
+          const t2 = Math.min(1, (f.phaseFrame - (suT - 1)) / 3);
+          A.armR = -0.95 * t2; A.armRFore = 0.85 * t2; A.armL = 0.7 * t2; A.head = 0.05 * t2; A.torso = -0.05 * t2;
+          return { angles: A, dx: 70 * t2 };
         }
         if (f.move === 'super') {                            // ギアマックス: 乱舞 flurry
           const pump = Math.sin(f.phaseFrame * 0.85);        // fast alternating jabs
@@ -337,13 +349,22 @@ export class PuppetRig {
         return { angles: A, dx: -100 };
       }
       case 'thrown': {
-        // grabbed then swung: held stiff at first, then flailing and tipping
-        // backward through the arc (the smoothing turns this into a real tumble).
-        const fl = Math.min(1, f.phaseFrame / 12);
-        A.head = 0.35 * fl; A.torso = -0.2 * fl;
-        A.armR = 0.9 * fl; A.armL = 0.75 * fl;
-        A.legR = -0.3 * fl; A.legRShin = 0.5 * fl; A.legL = 0.3 * fl; A.legLShin = 0.45 * fl;
-        return { angles: A, rot: -1.15 * fl, dx: -25 };
+        // grabbed then swung: held stiff (tensed, not limp) through the grab beat,
+        // THEN flailing and tipping backward continuously through the WHOLE
+        // airborne arc - not just its first fraction - so the body keeps tumbling
+        // in step with the physical arc (stepThrown) instead of freezing into a
+        // static "windmill" pose partway through the flight.
+        const hf = f.phaseFrame;
+        if (hf < THROW_HOLD) {
+          const hl = hf / THROW_HOLD;
+          A.head = 0.15 * hl; A.torso = -0.05 * hl; A.armR = 0.3 * hl; A.armL = 0.25 * hl;
+          return { angles: A, rot: -0.15 * hl };
+        }
+        const al = Math.min(1, (hf - THROW_HOLD) / THROW_ARC);
+        A.head = 0.15 + 0.3 * al; A.torso = -0.05 - 0.25 * al;
+        A.armR = 0.3 + 0.7 * al; A.armL = 0.25 + 0.6 * al;
+        A.legR = -0.35 * al; A.legRShin = 0.55 * al; A.legL = 0.35 * al; A.legLShin = 0.5 * al;
+        return { angles: A, rot: -0.15 - 1.3 * al, dx: -25 * al };
       }
       case 'launched': {
         // airborne tumble after a launching hit: back arched, limbs flailing, the
